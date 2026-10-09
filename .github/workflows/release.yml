@@ -65,3 +65,21 @@ jobs:
             Все артефакты компилируются напрямую из исходного кода в изолированной среде GitHub Actions.
           releaseDraft: false
           prerelease: false
+
+      - name: Prepare Portable Executable
+        shell: powershell
+        run: |
+          $bin = "./proxy-router-desktop/src-tauri/target/release/proxy-router-desktop.exe"
+          if (Test-Path $bin) {
+            Copy-Item $bin "./Proxy.Router.Desktop_portable.exe"
+          }
+
+      - name: Upload Portable Executable
+        uses: softprops/action-gh-release@v2
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          files: |
+            Proxy.Router.Desktop_portable.exe
