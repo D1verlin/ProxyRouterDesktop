@@ -7,6 +7,20 @@ use std::sync::{Arc, RwLock};
 use std::thread;
 use tauri::{command, Window};
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+/// Spawns a Command without showing any console window on Windows
+fn hidden_command(program: &str) -> Command {
+    let mut cmd = Command::new(program);
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    cmd
+}
+
 const REG_PATH: &str =
     r"HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings";
 
@@ -185,8 +199,8 @@ pub fn get_public_ip() -> Result<String, String> {
     ];
 
     for endpoint in endpoints {
-        let mut cmd = Command::new("curl.exe");
-        cmd.args(["--silent", "--max-time", "4", "--noproxy", "*", endpoint]);
+        let mut cmd = hidden_command("curl.exe");
+        cmd.args(["--silent", "--connect-timeout", "2", "--max-time", "3", "--noproxy", "*", endpoint]);
         cmd.env_remove("HTTP_PROXY")
            .env_remove("HTTPS_PROXY")
            .env_remove("ALL_PROXY")
@@ -239,7 +253,7 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
 }
 "#;
 
-    let out = Command::new("powershell")
+    let out = hidden_command("powershell")
         .args(["-NoProfile", "-NonInteractive", "-Command", script])
         .output()
         .map_err(|e| format!("Failed to open file dialog: {}", e))?;
@@ -262,7 +276,7 @@ pub struct ProcessStatus {
 /// Checks whether specified executables are currently running in Windows
 #[command]
 pub fn check_running_processes(names: Vec<String>) -> Result<Vec<ProcessStatus>, String> {
-    let out = Command::new("tasklist")
+    let out = hidden_command("tasklist")
         .args(["/FO", "CSV", "/NH"])
         .output()
         .map_err(|e| format!("tasklist execution failed: {}", e))?;
@@ -301,7 +315,7 @@ pub fn kill_process(exe_name: String) -> Result<(), String> {
         clean
     };
 
-    let out = Command::new("taskkill")
+    let out = hidden_command("taskkill")
         .args(["/F", "/IM", name])
         .output()
         .map_err(|e| format!("taskkill error: {}", e))?;
@@ -354,24 +368,24 @@ pub fn launch_app_with_proxy(
 pub fn set_terminal_env_proxy(proxy_url: String, enabled: bool) -> Result<String, String> {
     let env_reg = r"HKCU\Environment";
     if enabled {
-        let _ = Command::new("reg")
+        let _ = hidden_command("reg")
             .args(["add", env_reg, "/v", "HTTP_PROXY", "/t", "REG_SZ", "/d", &proxy_url, "/f"])
             .output();
-        let _ = Command::new("reg")
+        let _ = hidden_command("reg")
             .args(["add", env_reg, "/v", "HTTPS_PROXY", "/t", "REG_SZ", "/d", &proxy_url, "/f"])
             .output();
-        let _ = Command::new("reg")
+        let _ = hidden_command("reg")
             .args(["add", env_reg, "/v", "ALL_PROXY", "/t", "REG_SZ", "/d", &proxy_url, "/f"])
             .output();
         Ok(format!("Terminal proxy variables set to {}", proxy_url))
     } else {
-        let _ = Command::new("reg")
+        let _ = hidden_command("reg")
             .args(["delete", env_reg, "/v", "HTTP_PROXY", "/f"])
             .output();
-        let _ = Command::new("reg")
+        let _ = hidden_command("reg")
             .args(["delete", env_reg, "/v", "HTTPS_PROXY", "/f"])
             .output();
-        let _ = Command::new("reg")
+        let _ = hidden_command("reg")
             .args(["delete", env_reg, "/v", "ALL_PROXY", "/f"])
             .output();
         Ok("Terminal proxy variables removed".to_string())
@@ -466,7 +480,7 @@ Add-Type -TypeDefinition $wininetCode -ErrorAction SilentlyContinue
         escaped_url
     );
 
-    let out = Command::new("powershell")
+    let out = hidden_command("powershell")
         .args(["-NoProfile", "-NonInteractive", "-Command", &script])
         .output()
         .map_err(|e| format!("Failed to configure Windows proxy: {}", e))?;
@@ -482,7 +496,7 @@ Add-Type -TypeDefinition $wininetCode -ErrorAction SilentlyContinue
 }
 
 fn reg_get(name: &str) -> Option<String> {
-    let out = Command::new("reg")
+    let out = hidden_command("reg")
         .args(["query", REG_PATH, "/v", name])
         .output()
         .ok()?;
