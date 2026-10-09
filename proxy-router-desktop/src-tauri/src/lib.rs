@@ -9,12 +9,19 @@ use proxy::{
     window_close, window_minimize, window_toggle_maximize,
 };
 
+use tauri::Manager;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .setup(|_app| {
+        .setup(|app| {
             start_embedded_pac_server();
+            if let Some(window) = app.get_webview_window("main") {
+                if let Some(icon) = app.default_window_icon() {
+                    let _ = window.set_icon(icon.clone());
+                }
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
