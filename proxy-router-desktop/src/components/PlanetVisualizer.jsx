@@ -30,6 +30,26 @@ import styles from './PlanetVisualizer.module.css';
 
 function toRad(deg) { return (deg * Math.PI) / 180; }
 
+// Precompute 3D unit sphere coordinates for instant projection without trig inside the render loop
+const PRECOMPUTED_DOTS = EARTH_DOTS.map(([lat, lon]) => ({
+  nx: Math.cos(lat) * Math.sin(lon),
+  ny: Math.sin(lat),
+  nz: Math.cos(lat) * Math.cos(lon),
+}));
+
+const PRECOMPUTED_RINGS = EARTH_RINGS.map((ring) => {
+  const points = [];
+  for (let i = 0; i < ring.length; i += 2) {
+    const [lat, lon] = ring[i];
+    points.push({
+      nx: Math.cos(lat) * Math.sin(lon),
+      ny: Math.sin(lat),
+      nz: Math.cos(lat) * Math.cos(lon),
+    });
+  }
+  return points;
+});
+
 // ── Node & Badge Renderers ───────────────────────────────────────────────────
 
 // Circular outline badge with dark disc background for "Мой ПК" and "Прокси"
@@ -411,11 +431,21 @@ export default function PlanetVisualizer({
 
     let pulsePhase = 0;
     let handshakeTimer = 0;
-    let teardownTimer = 0;
+    let lastRenderTime = 0;
+    const TARGET_FPS_INTERVAL = 1000 / 30; // 30 FPS cap to reduce CPU/GPU load to near zero
 
-    const render = () => {
+    const render = (currentTime = performance.now()) => {
+      animId = requestAnimationFrame(render);
+
+      // Pause rendering completely when app is minimized or hidden
+      if (typeof document !== 'undefined' && document.hidden) return;
+
+      const elapsed = currentTime - lastRenderTime;
+      if (elapsed < TARGET_FPS_INTERVAL) return;
+      lastRenderTime = currentTime - (elapsed % TARGET_FPS_INTERVAL);
+
       ctx.clearRect(0, 0, width, height);
-      pulsePhase += 0.035;
+      pulsePhase += 0.05;
 
       // ────────────────────────────────────────────────────────────────────────
       // PHASE 1: CONNECTING HANDSHAKE PIPELINE (PC -> PROXY PACKETS)
@@ -492,8 +522,6 @@ export default function PlanetVisualizer({
         ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
         ctx.fillText(stepText, centerX, centerY - 36);
         ctx.textAlign = 'left';
-
-        animId = requestAnimationFrame(render);
         return;
       }
 
@@ -572,8 +600,6 @@ export default function PlanetVisualizer({
         ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
         ctx.fillText(stepText, centerX, centerY - 36);
         ctx.textAlign = 'left';
-
-        animId = requestAnimationFrame(render);
         return;
       }
 
@@ -587,6 +613,10 @@ export default function PlanetVisualizer({
 
       const rotY = rotRef.current.y;
       const rotX = rotRef.current.x;
+      const cosY = Math.cos(rotY);
+      const sinY = Math.sin(rotY);
+      const cosX = Math.cos(rotX);
+      const sinX = Math.sin(rotX);
       const isRedAlert = Boolean(isUnconfiguredWarning);
 
       // Smooth hover interpolation for organic illumination (0 -> 1)
@@ -654,54 +684,100 @@ export default function PlanetVisualizer({
         ctx.stroke();
       });
 
-      // 2. RENDER AUTHENTIC CONTINENT COASTLINES (Natural Earth 110m real vector contours)
-      EARTH_RINGS.forEach((ring) => {
-        ctx.beginPath();
+      // 2. RENDER AUTHENTIC CONTINENT COASTLINES (Batch rendered in a single draw call)
+      ctx.beginPath();
+      for (let r = 0; r < PRECOMPUTED_RINGS.length; r++) {
+        const ring = PRECOMPUTED_RINGS[r];
         let drawing = false;
         for (let i = 0; i < ring.length; i++) {
-          const [lat, lon] = ring[i];
-          const pt = project(lat, lon, radius, rotX, rotY);
-          if (pt.z > -2) {
+          const p = ring[i];
+          const rx = p.nx * cosY + p.nz * sinY;
+          const rz = p.nz * cosY - p.nx * sinY;
+          const px = rx * radius;
+          const py = p.ny * radius;
+          const pz = rz * radius;
+          const py2 = py * cosX - pz * sinX;
+          const pz2 = py * sinX + pz * cosX;
+
+          if (pz2 > -2) {
+            const sx = centerX + px;
+            const sy = centerY - py2;
             if (!drawing) {
-              ctx.moveTo(pt.x, pt.y);
+              ctx.moveTo(sx, sy);
               drawing = true;
             } else {
-              ctx.lineTo(pt.x, pt.y);
+              ctx.lineTo(sx, sy);
             }
           } else {
             drawing = false;
           }
         }
-        ctx.strokeStyle = isRedAlert
-          ? 'rgba(239, 68, 68, 0.45)'
-          : isActive
-          ? `rgba(255, 255, 255, ${0.22 + hoverVal * 0.18})`
-          : `rgba(255, 255, 255, ${0.11 + hoverVal * 0.22})`;
-        ctx.lineWidth = 1.0;
-        ctx.stroke();
-      });
+      }
+      ctx.strokeStyle = isRedAlert
+        ? 'rgba(239, 68, 68, 0.45)'
+        : isActive
+        ? `rgba(255, 255, 255, ${0.22 + hoverVal * 0.18})`
+        : `rgba(255, 255, 255, ${0.11 + hoverVal * 0.22})`;
+      ctx.lineWidth = 1.0;
+      ctx.stroke();
 
-      // 3. RENDER THE 3D DOT-MATRIX CONTINENTS (Organic illumination inside true landmasses)
-      EARTH_DOTS.forEach(([lat, lon]) => {
-        const pt = project(lat, lon, radius, rotX, rotY);
-        if (pt.z > 0) {
-          const depth = pt.z / radius; // 0 at limb, 1 at center
-          const dotSize = 0.75 + depth * 1.25 + hoverVal * 0.25;
-          const dotAlpha = isRedAlert
-            ? 0.15 + depth * 0.75
-            : isActive
-            ? 0.12 + depth * 0.65 + hoverVal * 0.15
-            : 0.06 + depth * 0.32 + hoverVal * (0.2 + depth * 0.25);
+      // 3. RENDER 3D DOT-MATRIX CONTINENTS (Precomputed coordinates batched into 2 depth tiers)
+      const fgDots = [];
+      const bgDots = [];
 
-          ctx.fillStyle = isRedAlert
-            ? `rgba(239, 68, 68, ${dotAlpha})`
-            : `rgba(255, 255, 255, ${dotAlpha})`;
+      for (let i = 0; i < PRECOMPUTED_DOTS.length; i++) {
+        const p = PRECOMPUTED_DOTS[i];
+        const rx = p.nx * cosY + p.nz * sinY;
+        const rz = p.nz * cosY - p.nx * sinY;
+        const px = rx * radius;
+        const py = p.ny * radius;
+        const pz = rz * radius;
+        const py2 = py * cosX - pz * sinX;
+        const pz2 = py * sinX + pz * cosX;
 
-          ctx.beginPath();
-          ctx.arc(pt.x, pt.y, dotSize, 0, Math.PI * 2);
-          ctx.fill();
+        if (pz2 > 0) {
+          const sx = centerX + px;
+          const sy = centerY - py2;
+          const depth = pz2 / radius;
+          if (depth > 0.4) {
+            fgDots.push(sx, sy);
+          } else {
+            bgDots.push(sx, sy);
+          }
         }
-      });
+      }
+
+      // Draw midground / limb dots batch
+      if (bgDots.length > 0) {
+        ctx.beginPath();
+        const dSize = 1.1 + hoverVal * 0.25;
+        const half = dSize / 2;
+        for (let i = 0; i < bgDots.length; i += 2) {
+          ctx.rect(bgDots[i] - half, bgDots[i + 1] - half, dSize, dSize);
+        }
+        ctx.fillStyle = isRedAlert
+          ? 'rgba(239, 68, 68, 0.35)'
+          : isActive
+          ? `rgba(255, 255, 255, ${0.22 + hoverVal * 0.2})`
+          : `rgba(255, 255, 255, ${0.1 + hoverVal * 0.25})`;
+        ctx.fill();
+      }
+
+      // Draw foreground dots batch
+      if (fgDots.length > 0) {
+        ctx.beginPath();
+        const dSize = 1.8 + hoverVal * 0.3;
+        const half = dSize / 2;
+        for (let i = 0; i < fgDots.length; i += 2) {
+          ctx.rect(fgDots[i] - half, fgDots[i + 1] - half, dSize, dSize);
+        }
+        ctx.fillStyle = isRedAlert
+          ? 'rgba(239, 68, 68, 0.75)'
+          : isActive
+          ? `rgba(255, 255, 255, ${0.65 + hoverVal * 0.2})`
+          : `rgba(255, 255, 255, ${0.32 + hoverVal * 0.35})`;
+        ctx.fill();
+      }
 
       // 4. PARABOLIC ROUTE BEAMS (Main highway + elegant branch lines)
       arcs.forEach((arc) => {
@@ -862,8 +938,6 @@ export default function PlanetVisualizer({
           ctx.fillText(clientNode.name, clientPt.x + (badgeR + 6), clientPt.y + 4);
         }
       }
-
-      animId = requestAnimationFrame(render);
     };
 
     render();
