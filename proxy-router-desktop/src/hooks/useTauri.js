@@ -16,6 +16,7 @@ async function invoke(cmd, args = {}) {
       return await tauriInvoke(cmd, args);
     } catch (err) {
       console.warn(`[useTauri] invoke('${cmd}') failed:`, err);
+      throw err;
     }
   }
 
@@ -24,7 +25,7 @@ async function invoke(cmd, args = {}) {
     case 'get_proxy_status':
       return { pac_url: '', proxy_enable: '0', proxy_server: '' };
     case 'set_system_proxy':
-      return `Browser mock: proxy set to ${args.pac_url}`;
+      return `Browser mock: proxy set to ${args.pacUrl || args.pac_url}`;
     case 'clear_system_proxy':
       return 'Browser mock: proxy cleared';
     case 'update_pac_rules':
@@ -50,7 +51,7 @@ async function invoke(cmd, args = {}) {
 
 export function useTauri() {
   const setSystemProxy = useCallback(async (pacUrl) => {
-    return invoke('set_system_proxy', { pac_url: pacUrl });
+    return invoke('set_system_proxy', { pacUrl, pac_url: pacUrl });
   }, []);
 
   const clearSystemProxy = useCallback(async () => {

@@ -184,10 +184,13 @@ export default function Dashboard() {
         }
 
         // 4. Update PAC server rules with currently enabled sites and VPS proxy host
-        let proxyHost = '127.0.0.1';
+        let proxyHost = '2.27.25.190';
         try {
           if (serverConfig?.apiUrl) {
-            proxyHost = new URL(serverConfig.apiUrl).hostname;
+            const h = new URL(serverConfig.apiUrl).hostname;
+            if (h && h !== 'localhost' && h !== '127.0.0.1' && !h.includes('your-server-ip')) {
+              proxyHost = h;
+            }
           }
         } catch {}
 

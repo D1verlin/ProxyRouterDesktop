@@ -23,9 +23,34 @@ const PAC_PORT = parseInt(process.env.PAC_PORT ?? '8182', 10);
 
 // ── Current config ────────────────────────────────────────────────────────────
 let config = {
-  proxyHost:     process.env.PROXY_HOST     ?? '127.0.0.1',
+  proxyHost:     process.env.PROXY_HOST     ?? '2.27.25.190',
   proxyPort:     parseInt(process.env.PROXY_PORT ?? '3128', 10),
-  enabledHosts:  [],
+  enabledHosts:  [
+    'gemini.google.com',
+    'bard.google.com',
+    'proactivebackend-pa.googleapis.com',
+    'generativelanguage.googleapis.com',
+    'alkalimakersuite-pa.clients6.google.com',
+    'alkalimakersuite-pa.googleapis.com',
+    'apis.google.com',
+    'accounts.google.com',
+    'ssl.gstatic.com',
+    'www.gstatic.com',
+    'gstatic.com',
+    'googleusercontent.com',
+    'deepmind.google',
+    'aistudio.google.com',
+    'googleapis.com',
+    'clients6.google.com',
+    'chatgpt.com',
+    'chat.openai.com',
+    'oaistatic.com',
+    'oaiusercontent.com',
+    'openai.com',
+    'claude.ai',
+    'anthropic.com',
+    'claudeusercontent.com',
+  ],
   customDomains: [],
 };
 

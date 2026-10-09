@@ -78,7 +78,33 @@ function FindProxyForURL(url, host) {{
 
 /// Starts embedded lightweight PAC HTTP server on 127.0.0.1:8182
 pub fn start_embedded_pac_server() {
-    let default_pac = generate_pac_script("127.0.0.1", 3128, &[]);
+    let default_domains = vec![
+        "gemini.google.com".to_string(),
+        "bard.google.com".to_string(),
+        "proactivebackend-pa.googleapis.com".to_string(),
+        "generativelanguage.googleapis.com".to_string(),
+        "alkalimakersuite-pa.clients6.google.com".to_string(),
+        "alkalimakersuite-pa.googleapis.com".to_string(),
+        "apis.google.com".to_string(),
+        "accounts.google.com".to_string(),
+        "ssl.gstatic.com".to_string(),
+        "www.gstatic.com".to_string(),
+        "gstatic.com".to_string(),
+        "googleusercontent.com".to_string(),
+        "deepmind.google".to_string(),
+        "aistudio.google.com".to_string(),
+        "googleapis.com".to_string(),
+        "clients6.google.com".to_string(),
+        "chatgpt.com".to_string(),
+        "chat.openai.com".to_string(),
+        "oaistatic.com".to_string(),
+        "oaiusercontent.com".to_string(),
+        "openai.com".to_string(),
+        "claude.ai".to_string(),
+        "anthropic.com".to_string(),
+        "claudeusercontent.com".to_string(),
+    ];
+    let default_pac = generate_pac_script("2.27.25.190", 3128, &default_domains);
     if let Ok(mut lock) = PAC_CONTENT.write() {
         *lock = Some(Arc::new(default_pac));
     }
@@ -153,9 +179,14 @@ pub fn update_pac_rules(proxy_host: String, proxy_port: u16, hosts: Vec<String>)
 
 /// Sets the system proxy to a PAC URL (Proxy Auto-Config) updating both root registry and Connections blobs.
 #[command]
-pub fn set_system_proxy(pac_url: String) -> Result<String, String> {
-    apply_windows_pac_proxy(&pac_url)?;
-    Ok(format!("System proxy set to PAC: {}", pac_url))
+pub fn set_system_proxy(
+    pac_url: Option<String>,
+    #[allow(non_snake_case)]
+    pacUrl: Option<String>,
+) -> Result<String, String> {
+    let url = pac_url.or(pacUrl).unwrap_or_default();
+    apply_windows_pac_proxy(&url)?;
+    Ok(format!("System proxy set to PAC: {}", url))
 }
 
 /// Clears all system proxy settings — traffic goes direct.
