@@ -25,7 +25,7 @@ export default function Dashboard() {
   } = state;
 
   const { setSystemProxy, clearSystemProxy, getNativeIp } = useTauri();
-  const { pacUrl, checkHealth } = usePacServer();
+  const { pacUrl, checkHealth, updateConfig } = usePacServer();
   const [errorNotice, setErrorNotice] = useState(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
@@ -183,7 +183,26 @@ export default function Dashboard() {
           await new Promise((resolve) => setTimeout(resolve, 2800 - elapsed));
         }
 
-        // 4. Set Windows system proxy to PAC URL
+        // 4. Update PAC server rules with currently enabled sites and VPS proxy host
+        let proxyHost = '127.0.0.1';
+        try {
+          if (serverConfig?.apiUrl) {
+            proxyHost = new URL(serverConfig.apiUrl).hostname;
+          }
+        } catch {}
+
+        const enabledHosts = presetSites
+          .filter(s => s.enabled)
+          .flatMap(s => (s.hosts && s.hosts.length > 0 ? s.hosts : [s.host]));
+
+        await updateConfig({
+          proxyHost,
+          proxyPort: 3128,
+          enabledHosts,
+          customDomains,
+        });
+
+        // 5. Set Windows system proxy to PAC URL
         const pacAlive = await checkHealth();
         if (pacAlive) {
           try {

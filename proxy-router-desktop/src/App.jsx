@@ -12,9 +12,40 @@ import Dashboard from './pages/Dashboard';
 import Sites from './pages/Sites';
 import Apps from './pages/Apps';
 import Whitelist from './pages/Whitelist';
+import { useEffect } from 'react';
 import ActivityLog from './pages/ActivityLog';
 import Settings from './pages/Settings';
+import { useAppStore } from './store/useAppStore';
+import { usePacServer } from './hooks/usePacServer';
 import styles from './App.module.css';
+
+function PacSync() {
+  const { state } = useAppStore();
+  const { presetSites, customDomains, serverConfig } = state;
+  const { updateConfig } = usePacServer();
+
+  useEffect(() => {
+    let proxyHost = '127.0.0.1';
+    try {
+      if (serverConfig?.apiUrl) {
+        proxyHost = new URL(serverConfig.apiUrl).hostname;
+      }
+    } catch {}
+
+    const enabledHosts = (presetSites || [])
+      .filter(s => s.enabled)
+      .flatMap(s => (s.hosts && s.hosts.length > 0 ? s.hosts : [s.host]));
+
+    updateConfig({
+      proxyHost,
+      proxyPort: 3128,
+      enabledHosts,
+      customDomains: customDomains || [],
+    }).catch(() => {});
+  }, [presetSites, customDomains, serverConfig?.apiUrl, updateConfig]);
+
+  return null;
+}
 
 function MainLayout() {
   useStorageHydrate();
@@ -22,6 +53,7 @@ function MainLayout() {
 
   return (
     <HashRouter>
+      <PacSync />
       <div className={styles.windowShell}>
         {/* Custom Window Titlebar & Native Window Controls */}
         <Titlebar />

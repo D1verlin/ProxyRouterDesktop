@@ -16,13 +16,24 @@ static PAC_CONTENT: RwLock<Option<Arc<String>>> = RwLock::new(None);
 fn generate_pac_script(proxy_host: &str, proxy_port: u16, hosts: &[String]) -> String {
     let proxy = format!("PROXY {}:{}", proxy_host, proxy_port);
     let mut conditions = Vec::new();
-    for host in hosts {
-        let pattern = if host.starts_with("*.") {
-            host.to_string()
-        } else {
-            format!("*.{}", host.trim_start_matches('.'))
-        };
-        conditions.push(format!("    shExpMatch(host, \"{}\")", pattern));
+    let mut seen = std::collections::HashSet::new();
+
+    for raw in hosts {
+        let trimmed = raw.trim();
+        let domain = trimmed
+            .trim_start_matches("*.")
+            .trim_start_matches('.')
+            .to_lowercase();
+
+        if domain.is_empty() || !seen.insert(domain.clone()) {
+            continue;
+        }
+
+        // Match both the exact apex domain (e.g. chatgpt.com) and all its subdomains (e.g. *.chatgpt.com)
+        conditions.push(format!(
+            "    shExpMatch(host, \"{}\") || shExpMatch(host, \"*.{}\")",
+            domain, domain
+        ));
     }
 
     let match_block = if conditions.is_empty() {
@@ -35,7 +46,9 @@ fn generate_pac_script(proxy_host: &str, proxy_port: u16, hosts: &[String]) -> S
 r#"// Proxy Auto-Configuration (PAC) — Proxy Router Desktop
 function FindProxyForURL(url, host) {{
   var proxy = "{}";
+  host = (host || "").toLowerCase();
 
+  // Intranet and loopback traffic goes directly
   if (isPlainHostName(host) || host === "localhost" || host === "127.0.0.1") {{
     return "DIRECT";
   }}
@@ -124,23 +137,17 @@ pub fn update_pac_rules(proxy_host: String, proxy_port: u16, hosts: Vec<String>)
     }
 }
 
-/// Sets the system proxy to a PAC URL (Proxy Auto-Config).
+/// Sets the system proxy to a PAC URL (Proxy Auto-Config) updating both root registry and Connections blobs.
 #[command]
 pub fn set_system_proxy(pac_url: String) -> Result<String, String> {
-    reg_set("AutoConfigURL", &pac_url)?;
-    reg_set_dword("ProxyEnable", 0)?;
-    reg_set("ProxyServer", "")?;
-    notify_wininet()?;
+    apply_windows_pac_proxy(&pac_url)?;
     Ok(format!("System proxy set to PAC: {}", pac_url))
 }
 
 /// Clears all system proxy settings — traffic goes direct.
 #[command]
 pub fn clear_system_proxy() -> Result<String, String> {
-    reg_set("AutoConfigURL", "")?;
-    reg_set_dword("ProxyEnable", 0)?;
-    reg_set("ProxyServer", "")?;
-    notify_wininet()?;
+    apply_windows_pac_proxy("")?;
     Ok("System proxy cleared".to_string())
 }
 
@@ -392,30 +399,85 @@ pub fn window_close(window: Window) -> Result<(), String> {
     window.close().map_err(|e| e.to_string())
 }
 
-// ── Registry helpers ──────────────────────────────────────────────────────────
+// ── Registry & WinInet helpers ──────────────────────────────────────────────
 
-fn reg_set(name: &str, value: &str) -> Result<(), String> {
-    let out = Command::new("reg")
-        .args(["add", REG_PATH, "/v", name, "/t", "REG_SZ", "/d", value, "/f"])
+fn apply_windows_pac_proxy(pac_url: &str) -> Result<(), String> {
+    let escaped_url = pac_url.replace('"', "\\\"");
+    let script = format!(
+        r#"
+$pacUrl = "{}"
+$regPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings'
+$connPath = "$regPath\Connections"
+
+if ($pacUrl) {{
+    Set-ItemProperty -Path $regPath -Name 'AutoConfigURL' -Value $pacUrl
+    Set-ItemProperty -Path $regPath -Name 'ProxyEnable' -Value 0
+    Set-ItemProperty -Path $regPath -Name 'ProxyServer' -Value ''
+
+    # Flag 0x05 = PROXY_TYPE_DIRECT (1) | PROXY_TYPE_AUTO_PROXY_URL (4)
+    $flags = [byte]0x05
+    $header = [byte[]](0x46, 0x00, 0x00, 0x00, 0x0B, 0x00, 0x00, 0x00, $flags, 0x00, 0x00, 0x00)
+    $proxyServerLen = [BitConverter]::GetBytes([int]0)
+    $bypassBytes = [System.Text.Encoding]::ASCII.GetBytes("<-loopback>")
+    $bypassLen = [BitConverter]::GetBytes([int]$bypassBytes.Length)
+    $pacBytes = [System.Text.Encoding]::ASCII.GetBytes($pacUrl)
+    $pacLen = [BitConverter]::GetBytes([int]$pacBytes.Length)
+    $padding = New-Object byte[] 32
+    $blob = $header + $proxyServerLen + $bypassLen + $bypassBytes + $pacLen + $pacBytes + $padding
+
+    Set-ItemProperty -Path $connPath -Name 'DefaultConnectionSettings' -Value $blob
+    Set-ItemProperty -Path $connPath -Name 'SavedLegacySettings' -Value $blob
+}} else {{
+    Set-ItemProperty -Path $regPath -Name 'AutoConfigURL' -Value ''
+    Set-ItemProperty -Path $regPath -Name 'ProxyEnable' -Value 0
+    Set-ItemProperty -Path $regPath -Name 'ProxyServer' -Value ''
+
+    # Flag 0x09 = PROXY_TYPE_AUTO_DETECT (wpad default)
+    $flags = [byte]0x09
+    $header = [byte[]](0x46, 0x00, 0x00, 0x00, 0x0B, 0x00, 0x00, 0x00, $flags, 0x00, 0x00, 0x00)
+    $proxyServerLen = [BitConverter]::GetBytes([int]0)
+    $bypassBytes = [System.Text.Encoding]::ASCII.GetBytes("<-loopback>")
+    $bypassLen = [BitConverter]::GetBytes([int]$bypassBytes.Length)
+    $pacLen = [BitConverter]::GetBytes([int]0)
+    $padding = New-Object byte[] 32
+    $blob = $header + $proxyServerLen + $bypassLen + $bypassBytes + $pacLen + $padding
+
+    Set-ItemProperty -Path $connPath -Name 'DefaultConnectionSettings' -Value $blob
+    Set-ItemProperty -Path $connPath -Name 'SavedLegacySettings' -Value $blob
+}}
+
+$wininetCode = @"
+using System;
+using System.Runtime.InteropServices;
+public class WinInetHelper {{
+    [DllImport("wininet.dll", SetLastError = true)]
+    public static extern bool InternetSetOption(IntPtr hInternet, int dwOption, IntPtr lpBuffer, int dwBufferLength);
+    public const int INTERNET_OPTION_SETTINGS_CHANGED = 39;
+    public const int INTERNET_OPTION_REFRESH = 37;
+    public static void Refresh() {{
+        InternetSetOption(IntPtr.Zero, INTERNET_OPTION_SETTINGS_CHANGED, IntPtr.Zero, 0);
+        InternetSetOption(IntPtr.Zero, INTERNET_OPTION_REFRESH, IntPtr.Zero, 0);
+    }}
+}}
+"@
+Add-Type -TypeDefinition $wininetCode -ErrorAction SilentlyContinue
+[WinInetHelper]::Refresh()
+"#,
+        escaped_url
+    );
+
+    let out = Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
         .output()
-        .map_err(|e| format!("reg add failed: {}", e))?;
+        .map_err(|e| format!("Failed to configure Windows proxy: {}", e))?;
 
     if !out.status.success() {
-        return Err(format!("reg add {} returned error", name));
+        return Err(format!(
+            "Failed configuring Windows proxy: {}",
+            String::from_utf8_lossy(&out.stderr)
+        ));
     }
-    Ok(())
-}
 
-fn reg_set_dword(name: &str, value: u32) -> Result<(), String> {
-    let val_str = value.to_string();
-    let out = Command::new("reg")
-        .args(["add", REG_PATH, "/v", name, "/t", "REG_DWORD", "/d", &val_str, "/f"])
-        .output()
-        .map_err(|e| format!("reg add DWORD failed: {}", e))?;
-
-    if !out.status.success() {
-        return Err(format!("reg add DWORD {} returned error", name));
-    }
     Ok(())
 }
 
@@ -433,35 +495,4 @@ fn reg_get(name: &str) -> Option<String> {
         }
     }
     None
-}
-
-fn notify_wininet() -> Result<(), String> {
-    let script = r#"
-Add-Type -TypeDefinition @'
-using System;
-using System.Runtime.InteropServices;
-public class WinInet {
-    [DllImport("wininet.dll")]
-    public static extern bool InternetSetOption(IntPtr hInternet, int dwOption, IntPtr lpBuffer, int dwBufferLength);
-    public const int INTERNET_OPTION_SETTINGS_CHANGED = 39;
-    public const int INTERNET_OPTION_REFRESH          = 37;
-    public static void NotifyChange() {
-        InternetSetOption(IntPtr.Zero, INTERNET_OPTION_SETTINGS_CHANGED, IntPtr.Zero, 0);
-        InternetSetOption(IntPtr.Zero, INTERNET_OPTION_REFRESH, IntPtr.Zero, 0);
-    }
-}
-'@
-[WinInet]::NotifyChange()
-"#;
-
-    let out = Command::new("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", script])
-        .output()
-        .map_err(|e| format!("powershell notify failed: {}", e))?;
-
-    if !out.status.success() {
-        // Non-critical, ignore error
-    }
-
-    Ok(())
 }

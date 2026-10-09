@@ -47,9 +47,9 @@ export function usePacServer() {
    */
   const updateConfig = useCallback(async (cfg) => {
     const allHosts = [
-      ...(cfg.enabledHosts || []),
-      ...(cfg.customDomains || []).map(d => `*.${d.trim().replace(/^\*\./, '')}`),
-    ];
+      ...(cfg.enabledHosts || []).map(d => d.trim().replace(/^\*\./, '').replace(/^\./, '')),
+      ...(cfg.customDomains || []).map(d => d.trim().replace(/^\*\./, '').replace(/^\./, '')),
+    ].filter(Boolean);
 
     // 1. If running under Tauri, update native in-memory PAC rules directly
     if (isTauri) {
