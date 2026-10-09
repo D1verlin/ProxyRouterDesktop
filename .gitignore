@@ -1,0 +1,69 @@
+# ==============================================================================
+# Proxy Router Desktop — Root .gitignore
+# ==============================================================================
+
+# Node dependencies
+node_modules/
+**/node_modules/
+package-lock.json.bak
+
+# Vite / Frontend build artifacts
+dist/
+dist-ssr/
+**/dist/
+**/dist-ssr/
+*.local
+
+# Rust / Cargo build artifacts
+target/
+**/target/
+Cargo.lock.bak
+
+# Tauri auto-generated schemas & cache
+gen/schemas/
+**/gen/schemas/
+
+# Sensitive tokens, keys and environment variables
+.env
+.env.*
+!.env.example
+*.token
+*.key
+server/tokens.json
+tokens.json
+*tokens*.json
+*.txt
+!tokens.json.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# OS and filesystem artifacts
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# IDE & Editor configurations
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.bak
+
+# AI agent local files
+.agent/

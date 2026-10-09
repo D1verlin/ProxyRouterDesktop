@@ -1,0 +1,438 @@
+/* Settings.module.css — Dark Monolith Minimalist Settings & Profile Sharing */
+
+.page {
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  height: 100%;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.subtitle {
+  font-size: 13px;
+  color: var(--text-sec);
+}
+
+.noticeBanner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  max-width: 520px;
+  box-sizing: border-box;
+}
+
+.noticeSuccess {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+
+.noticeError {
+  background: rgba(200, 60, 60, 0.08);
+  border: 1px solid rgba(200, 60, 60, 0.25);
+  color: #d47070;
+}
+
+.noticeIcon {
+  flex-shrink: 0;
+}
+
+.noticeClose {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 520px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-sec);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.hint {
+  font-size: 11px;
+  color: var(--text-sec);
+}
+
+.tokenRow {
+  display: flex;
+  gap: 8px;
+}
+
+.tokenRow .input {
+  flex: 1;
+}
+
+.infoCard {
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.infoRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.infoLabel {
+  font-size: 12px;
+  color: var(--text-sec);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.separator {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 6px 0;
+}
+
+/* ── Profile Sharing Section ─────────────────────────────────── */
+.profileSection {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+}
+
+.sectionTitle {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.exportCard {
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.exportHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cardHeading {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.tag {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--text-sec);
+}
+
+.cardDesc {
+  font-size: 12px;
+  color: var(--text-sec);
+}
+
+.buttonGroup {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ── Drag and Drop Zone ─────────────────────────────────────── */
+.dropZone {
+  background: var(--bg-surface-2);
+  border: 1px dashed var(--border);
+  border-radius: var(--r-md);
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: var(--t);
+  text-align: center;
+}
+
+.dropZone:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.dropZoneActive {
+  border-color: #ffffff;
+  background: rgba(255, 255, 255, 0.05);
+  border-style: solid;
+}
+
+.dropIcon {
+  color: var(--text-sec);
+}
+
+.dropText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--text-sec);
+}
+
+.dropText strong {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+/* ── Key Paste Card ─────────────────────────────────────────── */
+.pasteCard {
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.inputRow {
+  display: flex;
+  gap: 8px;
+}
+
+.inputRow .input {
+  flex: 1;
+}
+
+/* ── About & Updates Section ─────────────────────────────────── */
+.aboutSection {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.aboutCard {
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.aboutGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.aboutRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.aboutLabel {
+  font-size: 12px;
+  color: var(--text-sec);
+}
+
+.aboutValue {
+  font-size: 13px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.versionBadgeGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.linkButton {
+  background: transparent;
+  border: none;
+  color: var(--text-sec);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 0;
+  transition: var(--t);
+}
+
+.linkButton:hover {
+  color: #ffffff;
+  text-decoration: underline;
+}
+
+.updateBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.updateHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.updateTitleGroup {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.checkedTime {
+  font-size: 11px;
+  color: var(--text-sec);
+  font-family: var(--font-mono);
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.updateStatusLatest {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.statusSuccessIcon {
+  color: rgba(255, 255, 255, 0.9);
+  flex-shrink: 0;
+}
+
+.updateStatusAvailable {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: var(--r-sm);
+}
+
+.availableInfo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.availableTag {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  background: #ffffff;
+  color: #000000;
+  padding: 2px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.03em;
+}
+
+.availableText {
+  font-size: 12px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.updateStatusError {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(200, 60, 60, 0.08);
+  border: 1px solid rgba(200, 60, 60, 0.25);
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  color: #d47070;
+}
+
+.errorLink {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 12px;
+}

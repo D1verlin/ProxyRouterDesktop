@@ -1,0 +1,277 @@
+.page {
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.subtitle {
+  font-size: 13px;
+  color: var(--text-sec);
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+  color: var(--text-sec);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: var(--t);
+  margin-bottom: -1px;
+}
+
+.tab:hover {
+  color: var(--text-primary);
+}
+
+.tabActive {
+  color: var(--text-primary);
+  border-color: var(--border);
+  border-bottom-color: var(--bg-app);
+  background: var(--bg-app);
+}
+
+.presetSection {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.filterBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.searchBox {
+  position: relative;
+  flex: 1;
+  max-width: 360px;
+}
+
+.searchIcon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-sec);
+  pointer-events: none;
+}
+
+.bulkActions {
+  display: flex;
+  gap: 8px;
+}
+
+.categories {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.categoryPill {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  color: var(--text-sec);
+  font-size: 11px;
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: var(--t);
+}
+
+.categoryPill:hover {
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+}
+
+.categoryActive {
+  color: #000000;
+  background: #ffffff;
+  border-color: #ffffff;
+  font-weight: 500;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.siteRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-surface-2);
+  cursor: pointer;
+  transition: var(--t);
+  gap: 16px;
+}
+
+.siteRow:hover {
+  border-color: var(--border-hover);
+}
+
+.siteRowActive {
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.siteInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+
+.siteTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.siteName {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.siteDesc {
+  font-size: 12px;
+  color: var(--text-sec);
+}
+
+.siteHost {
+  font-size: 11px;
+  color: #777777;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Toggle switch */
+.toggle {
+  width: 36px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  background: transparent;
+  position: relative;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: var(--t);
+  outline: none;
+}
+
+.toggleOn {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.toggleThumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--text-sec);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.toggleOn .toggleThumb {
+  transform: translateX(16px);
+  background: #ffffff;
+}
+
+/* Custom section */
+.customSection {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.addRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 620px;
+}
+
+.addInput {
+  flex: 1;
+  min-width: 0;
+  max-width: 440px;
+}
+
+.addBtn {
+  flex-shrink: 0;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 18px;
+}
+
+.domainRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-surface-2);
+  transition: var(--t);
+}
+
+.domainRow:hover {
+  border-color: var(--border-hover);
+}
+
+.domainText {
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.empty {
+  padding: 40px;
+  text-align: center;
+  color: var(--text-sec);
+  font-size: 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-surface-2);
+}

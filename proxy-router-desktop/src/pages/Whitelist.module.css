@@ -1,0 +1,172 @@
+.page {
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  height: 100%;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.subtitle {
+  font-size: 13px;
+  color: var(--text-sec);
+  margin-top: 4px;
+}
+
+.addCard {
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.inputRow {
+  display: flex;
+  gap: 8px;
+}
+
+.ipInput {
+  flex: 1;
+  height: 34px !important;
+  font-size: 13px !important;
+}
+
+.currentIpRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: var(--bg-surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  gap: 12px;
+}
+
+.currentIpText {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-sec);
+}
+
+.currentIpText strong {
+  color: #ffffff;
+}
+
+.unlistedTag {
+  font-size: 11px;
+  color: #888888;
+}
+
+.notice {
+  padding: 10px 14px;
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  border: 1px solid var(--border);
+}
+
+.success {
+  background: rgba(255, 255, 255, 0.05);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.warn {
+  background: rgba(220, 160, 40, 0.08);
+  color: #e5b352;
+  border-color: rgba(220, 160, 40, 0.2);
+}
+
+.error {
+  background: rgba(200, 60, 60, 0.08);
+  color: #d47070;
+  border-color: rgba(200, 60, 60, 0.2);
+}
+
+.listHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.countLabel {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-sec);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.ipRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 42px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-surface-2);
+  transition: var(--t);
+  box-sizing: border-box;
+}
+
+.ipRow:hover {
+  border-color: var(--border-hover);
+}
+
+.ipLeft {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.shieldIcon {
+  color: var(--text-sec);
+}
+
+.ipAddress {
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.empty {
+  padding: 40px;
+  text-align: center;
+  color: var(--text-sec);
+  font-size: 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-surface-2);
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

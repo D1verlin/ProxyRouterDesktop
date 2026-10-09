@@ -1,0 +1,108 @@
+/* PlanetVisualizer — Borderless, open, atmospheric 3D view */
+
+.wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  box-sizing: border-box;
+}
+
+.canvasContainer {
+  position: relative;
+  cursor: default;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.canvas {
+  width: 680px;
+  height: 480px;
+  display: block;
+}
+
+.footerSection {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.statusLine {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.statusDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-sec);
+  display: inline-block;
+  transition: background 0.2s ease;
+}
+
+.statusDot[data-warning='true'] {
+  background: #ef4444;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.7);
+}
+
+.statusDot[data-active='true'] {
+  background: #ffffff;
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+}
+
+.statusDot[data-unconfigured='true'] {
+  background: #c55a5a;
+}
+
+.statusLabel {
+  font-size: 13px;
+  font-family: var(--font-mono);
+  color: var(--text-sec);
+  letter-spacing: 0.04em;
+}
+
+.statusLabelWarning {
+  color: #ef4444 !important;
+  font-weight: 500;
+}
+
+@keyframes warningShake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-5px); }
+  40%, 80% { transform: translateX(5px); }
+}
+
+.warningShake {
+  animation: warningShake 0.45s ease-in-out;
+}
+
+.ipContainer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+}
+
+.ipLabel {
+  font-size: 13px;
+  font-family: var(--font-mono);
+  color: var(--text-sec);
+  letter-spacing: 0.04em;
+}
+
+.ipValue {
+  font-size: 16px;
+  font-weight: 600;
+  color: #ffffff;
+  letter-spacing: 0.04em;
+}

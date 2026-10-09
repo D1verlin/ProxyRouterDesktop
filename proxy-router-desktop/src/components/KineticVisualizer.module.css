@@ -1,0 +1,90 @@
+.visualizerContainer {
+  position: relative;
+  width: 100%;
+  max-width: 440px;
+  height: 380px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  user-select: none;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.canvas {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -58%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.coreButton {
+  position: relative;
+  z-index: 2;
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: var(--bg-surface-3);
+  border: 1px solid var(--border);
+  color: var(--text-sec);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: var(--t);
+  transform: translateY(-24px);
+  outline: none;
+  box-shadow: var(--shadow);
+}
+
+.coreButton:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.4);
+  color: #ffffff;
+  background: #1e1e1e;
+  transform: translateY(-24px) scale(1.02);
+}
+
+.coreButton:active:not(:disabled) {
+  transform: translateY(-24px) scale(0.98);
+}
+
+.coreButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.coreActive {
+  background: #222222;
+  border-color: rgba(255, 255, 255, 0.6);
+  color: #ffffff;
+}
+
+.statusInfo {
+  position: absolute;
+  bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  z-index: 2;
+}
+
+.statusPrimary {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.08em;
+  font-family: var(--font-mono);
+}
+
+.statusSecondary {
+  font-size: 11px;
+  color: var(--text-sec);
+}

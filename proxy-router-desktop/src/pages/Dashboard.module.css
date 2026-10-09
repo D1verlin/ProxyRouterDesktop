@@ -1,0 +1,67 @@
+/* Dashboard.module.css — Free borderless layout with floating alerts */
+
+.page {
+  position: relative;
+  padding: 16px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.noticeBar {
+  position: absolute;
+  top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(220, 70, 70, 0.1);
+  border: 1px solid rgba(220, 70, 70, 0.3);
+  color: #e58282;
+  padding: 8px 14px;
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  z-index: 10;
+  max-width: 680px;
+  box-sizing: border-box;
+}
+
+.noticeIcon {
+  flex-shrink: 0;
+}
+
+.noticeText {
+  flex: 1;
+}
+
+.settingsLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: var(--t);
+}
+
+.settingsLink:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.noticeClose {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}

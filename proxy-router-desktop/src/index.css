@@ -1,0 +1,157 @@
+/* ============================================================
+   Dark Monolith UI – Global Tokens & Reset
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  /* Surfaces */
+  --bg-app:       #121212;
+  --bg-surface:   #121212;
+  --bg-surface-2: #1c1c1c;
+  --bg-surface-3: #161616;
+
+  /* Accent & Typography */
+  --accent:       #FFFFFF;
+  --accent-fg:    #000000;
+  --text-primary: #E0E0E0;
+  --text-sec:     #888888;
+
+  /* Borders & Shadows */
+  --border:       rgba(255, 255, 255, 0.08);
+  --border-hover: rgba(255, 255, 255, 0.16);
+  --shadow:       0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg:    0 8px 24px rgba(0, 0, 0, 0.65);
+
+  /* Fonts */
+  --font-sans:    'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono:    'JetBrains Mono', 'Fira Code', monospace;
+
+  /* Radii & Motion */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --t:    all 0.15s ease;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  background: transparent;
+}
+
+body {
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────── */
+::-webkit-scrollbar        { width: 5px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { background: rgba(255,255,255,0.1); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+/* ── Shared Button Styles ──────────────────────────────────── */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: #FFFFFF;
+  color: #000000;
+  border: none;
+  border-radius: var(--r-md);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  padding: 0 20px;
+  height: 38px;
+  cursor: pointer;
+  transition: var(--t);
+}
+.btn-primary:hover  { background: #e0e0e0; }
+.btn-primary:active { background: #c8c8c8; }
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  padding: 0 20px;
+  height: 38px;
+  cursor: pointer;
+  transition: var(--t);
+}
+.btn-secondary:hover  { border-color: var(--border-hover); color: #fff; }
+.btn-secondary:active { background: rgba(255,255,255,0.04); }
+
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: var(--t);
+  color: var(--text-sec);
+}
+.btn-icon:hover  { border-color: var(--border-hover); color: var(--text-primary); }
+.btn-icon:active { background: rgba(255,255,255,0.04); }
+
+/* ── Input / Control ───────────────────────────────────────── */
+.input {
+  width: 100%;
+  background: var(--bg-surface-3);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  padding: 0 12px;
+  height: 38px;
+  outline: none;
+  transition: var(--t);
+}
+.input::placeholder { color: var(--text-sec); }
+.input:focus { border-color: #ffffff; box-shadow: none; }
+
+/* ── Badge / Status pill ───────────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-sec);
+}
+.badge.active   { color: #fff; background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); }
+.badge.inactive { color: var(--text-sec); }
+
+/* ── Mono values ───────────────────────────────────────────── */
+.mono { font-family: var(--font-mono); }
