@@ -3,39 +3,21 @@
  * Manages neural platform rules, APIs, and custom domains.
  */
 
-import { useEffect, useState, useMemo } from 'react';
-import { Plus, X, Search, Check, Sparkles } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Plus, X, Search, Sparkles } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
-import { usePacServer } from '../hooks/usePacServer';
 import styles from './Sites.module.css';
 
 const CATEGORIES = ['All', 'Google AI', 'OpenAI', 'Anthropic', 'Inference'];
 
 export default function Sites() {
-  const { state, dispatch } = useAppStore();
-  const { presetSites, customDomains, serverConfig } = state;
-  const { updateConfig } = usePacServer();
+  const { state, dispatch, t } = useAppStore();
+  const { presetSites, customDomains } = state;
 
   const [inputValue, setInputValue] = useState('');
   const [activeTab, setActiveTab] = useState('preset');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
-
-  // Push updated routing config to PAC server whenever sites change
-  useEffect(() => {
-    const enabledHosts = presetSites
-      .filter(s => s.enabled)
-      .flatMap(s => (s.hosts && s.hosts.length > 0 ? s.hosts : [s.host]));
-
-    updateConfig({
-      proxyHost: serverConfig.apiUrl
-        ? new URL(serverConfig.apiUrl).hostname
-        : '127.0.0.1',
-      proxyPort: 3128,
-      enabledHosts,
-      customDomains,
-    }).catch(() => {});
-  }, [presetSites, customDomains, serverConfig.apiUrl, updateConfig]);
 
   const filteredPresets = useMemo(() => {
     return presetSites.filter((site) => {
@@ -51,14 +33,17 @@ export default function Sites() {
     });
   }, [presetSites, selectedCategory, searchQuery]);
 
-  const activePresetsCount = presetSites.filter(s => s.enabled).length;
+  const activePresetsCount = presetSites.filter((s) => s.enabled).length;
 
   const handleAddCustom = () => {
     const val = inputValue.trim().toLowerCase();
     if (!val) return;
     dispatch({ type: 'ADD_CUSTOM_DOMAIN', payload: val });
     setInputValue('');
-    dispatch({ type: 'ADD_LOG_ENTRY', payload: { level: 'info', msg: `Added custom domain: ${val}` } });
+    dispatch({
+      type: 'ADD_LOG_ENTRY',
+      payload: { level: 'info', msg: `Added custom domain: ${val}` },
+    });
   };
 
   const handleKeyDown = (e) => {
@@ -69,8 +54,15 @@ export default function Sites() {
     <div className={styles.page}>
       <header className={styles.header}>
         <div>
-          <h1 className={styles.title}>AI Services &amp; Routing</h1>
-          <p className={styles.subtitle}>Select neural networks, AI APIs, and endpoints to route through proxy.</p>
+          <h1 className={styles.title}>
+            {t('sites.title', 'AI Services & Routing')}
+          </h1>
+          <p className={styles.subtitle}>
+            {t(
+              'sites.subtitle',
+              'Select neural networks, AI APIs, and endpoints to route through proxy.'
+            )}
+          </p>
         </div>
       </header>
 
@@ -82,8 +74,10 @@ export default function Sites() {
           onClick={() => setActiveTab('preset')}
         >
           <Sparkles size={14} />
-          AI &amp; Neural Presets
-          <span className="badge">{activePresetsCount}/{presetSites.length}</span>
+          {t('sites.title', 'AI & Neural Presets')}
+          <span className="badge">
+            {activePresetsCount}/{presetSites.length}
+          </span>
         </button>
 
         <button
@@ -91,7 +85,7 @@ export default function Sites() {
           className={`${styles.tab} ${activeTab === 'custom' ? styles.tabActive : ''}`}
           onClick={() => setActiveTab('custom')}
         >
-          Custom Domains
+          {t('sites.customDomainsTitle', 'Custom Domains')}
           <span className="badge">{customDomains.length}</span>
         </button>
       </div>
@@ -106,7 +100,7 @@ export default function Sites() {
                 type="text"
                 className="input"
                 style={{ paddingLeft: '32px', height: '34px' }}
-                placeholder="Search AI platforms or APIs..."
+                placeholder={t('sites.searchPlaceholder', 'Search AI platforms or APIs...')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -119,7 +113,7 @@ export default function Sites() {
                 style={{ height: '34px', fontSize: '12px', padding: '0 12px' }}
                 onClick={() => dispatch({ type: 'SET_ALL_PRESETS', payload: true })}
               >
-                Enable All
+                {t('sites.toggleAllOn', 'Enable All')}
               </button>
               <button
                 type="button"
@@ -127,7 +121,7 @@ export default function Sites() {
                 style={{ height: '34px', fontSize: '12px', padding: '0 12px' }}
                 onClick={() => dispatch({ type: 'SET_ALL_PRESETS', payload: false })}
               >
-                Disable All
+                {t('sites.toggleAllOff', 'Disable All')}
               </button>
             </div>
           </div>
@@ -141,7 +135,7 @@ export default function Sites() {
                 className={`${styles.categoryPill} ${selectedCategory === cat ? styles.categoryActive : ''}`}
                 onClick={() => setSelectedCategory(cat)}
               >
-                {cat}
+                {cat === 'All' ? t('sites.allCategories', 'All') : cat}
               </button>
             ))}
           </div>
@@ -202,12 +196,14 @@ export default function Sites() {
             />
             <button className={`btn-primary ${styles.addBtn}`} onClick={handleAddCustom}>
               <Plus size={15} />
-              Add Domain
+              {t('sites.btnAddDomain', 'Add Domain')}
             </button>
           </div>
 
           {customDomains.length === 0 ? (
-            <div className={styles.empty}>No custom domains added yet.</div>
+            <div className={styles.empty}>
+              {t('sites.noCustomDomains', 'No custom domains added yet.')}
+            </div>
           ) : (
             <div className={styles.list}>
               {customDomains.map((domain) => (

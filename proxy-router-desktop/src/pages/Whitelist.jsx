@@ -9,7 +9,7 @@ import { useAppStore } from '../store/useAppStore';
 import styles from './Whitelist.module.css';
 
 export default function Whitelist() {
-  const { state, dispatch } = useAppStore();
+  const { state, dispatch, t } = useAppStore();
   const { serverConfig, publicIp } = state;
   const [ips, setIps] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -20,7 +20,13 @@ export default function Whitelist() {
 
   const fetchWhitelist = useCallback(async () => {
     if (!normalizedUrl || !serverConfig.authToken) {
-      setNotice({ type: 'warn', text: 'Configure API URL and Token in Settings first' });
+      setNotice({
+        type: 'warn',
+        text: t(
+          'whitelist.statusError',
+          'Configure API URL and Token in Settings first'
+        ),
+      });
       return;
     }
 
@@ -28,12 +34,14 @@ export default function Whitelist() {
     setNotice(null);
     try {
       const res = await fetch(`${normalizedUrl}/api/whitelist`, {
-        headers: { 'Authorization': `Bearer ${serverConfig.authToken}` },
+        headers: { Authorization: `Bearer ${serverConfig.authToken}` },
         signal: AbortSignal.timeout(5000),
       });
 
       if (!res.ok) {
-        throw new Error(res.status === 401 ? 'Unauthorized (Invalid Token)' : `HTTP ${res.status}`);
+        throw new Error(
+          res.status === 401 ? 'Unauthorized (Invalid Token)' : `HTTP ${res.status}`
+        );
       }
 
       const data = await res.json();
@@ -41,18 +49,26 @@ export default function Whitelist() {
       setIps(list);
       dispatch({
         type: 'ADD_LOG_ENTRY',
-        payload: { category: 'AUTH', level: 'info', msg: `Fetched ${list.length} whitelist entries from Squid` },
+        payload: {
+          category: 'AUTH',
+          level: 'info',
+          msg: `Fetched ${list.length} whitelist entries from Squid`,
+        },
       });
     } catch (err) {
       setNotice({ type: 'error', text: `Failed to load whitelist: ${err.message}` });
       dispatch({
         type: 'ADD_LOG_ENTRY',
-        payload: { category: 'AUTH', level: 'error', msg: `Whitelist fetch failed: ${err.message}` },
+        payload: {
+          category: 'AUTH',
+          level: 'error',
+          msg: `Whitelist fetch failed: ${err.message}`,
+        },
       });
     } finally {
       setLoading(false);
     }
-  }, [normalizedUrl, serverConfig.authToken, dispatch]);
+  }, [normalizedUrl, serverConfig.authToken, dispatch, t]);
 
   const handleAddIp = async (ipToAdd) => {
     const target = (ipToAdd || manualIp).trim();
@@ -65,7 +81,7 @@ export default function Whitelist() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${serverConfig.authToken}`,
+          Authorization: `Bearer ${serverConfig.authToken}`,
         },
         body: JSON.stringify({ ip: target }),
         signal: AbortSignal.timeout(6000),
@@ -77,17 +93,28 @@ export default function Whitelist() {
       }
 
       setManualIp('');
-      setNotice({ type: 'success', text: `IP ${target} successfully authorized in Squid` });
+      setNotice({
+        type: 'success',
+        text: `IP ${target} ${t('whitelist.statusSuccess', 'successfully authorized in Squid')}`,
+      });
       dispatch({
         type: 'ADD_LOG_ENTRY',
-        payload: { category: 'AUTH', level: 'info', msg: `IP ${target} added to Squid whitelist` },
+        payload: {
+          category: 'AUTH',
+          level: 'info',
+          msg: `IP ${target} added to Squid whitelist`,
+        },
       });
       await fetchWhitelist();
     } catch (err) {
       setNotice({ type: 'error', text: `Could not add IP: ${err.message}` });
       dispatch({
         type: 'ADD_LOG_ENTRY',
-        payload: { category: 'AUTH', level: 'error', msg: `Add IP ${target} failed: ${err.message}` },
+        payload: {
+          category: 'AUTH',
+          level: 'error',
+          msg: `Add IP ${target} failed: ${err.message}`,
+        },
       });
     } finally {
       setLoading(false);
@@ -102,7 +129,7 @@ export default function Whitelist() {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${serverConfig.authToken}`,
+          Authorization: `Bearer ${serverConfig.authToken}`,
         },
         body: JSON.stringify({ ip: ipToRemove }),
         signal: AbortSignal.timeout(6000),
@@ -112,10 +139,17 @@ export default function Whitelist() {
         throw new Error(`HTTP ${res.status}`);
       }
 
-      setNotice({ type: 'success', text: `IP ${ipToRemove} removed from whitelist` });
+      setNotice({
+        type: 'success',
+        text: `IP ${ipToRemove} removed from whitelist`,
+      });
       dispatch({
         type: 'ADD_LOG_ENTRY',
-        payload: { category: 'AUTH', level: 'info', msg: `IP ${ipToRemove} removed from whitelist` },
+        payload: {
+          category: 'AUTH',
+          level: 'info',
+          msg: `IP ${ipToRemove} removed from whitelist`,
+        },
       });
       await fetchWhitelist();
     } catch (err) {
@@ -133,8 +167,13 @@ export default function Whitelist() {
     <div className={styles.page}>
       <header className={styles.header}>
         <div>
-          <h1 className={styles.title}>Server Whitelist</h1>
-          <p className={styles.subtitle}>Authorized IP addresses allowed to route through Squid proxy.</p>
+          <h1 className={styles.title}>{t('whitelist.title', 'Server Whitelist')}</h1>
+          <p className={styles.subtitle}>
+            {t(
+              'whitelist.subtitle',
+              'Authorized IP addresses allowed to route through Squid proxy.'
+            )}
+          </p>
         </div>
         <button
           type="button"
@@ -144,7 +183,7 @@ export default function Whitelist() {
           disabled={loading}
         >
           <RefreshCw size={13} className={loading ? styles.spinning : ''} />
-          Refresh
+          {t('common.refresh', 'Refresh')}
         </button>
       </header>
 
@@ -167,7 +206,7 @@ export default function Whitelist() {
             disabled={loading || !manualIp.trim()}
           >
             <Plus size={14} />
-            Add IP
+            {t('common.add', 'Add')} IP
           </button>
         </div>
 
@@ -175,7 +214,7 @@ export default function Whitelist() {
         {publicIp && !ips.includes(publicIp) && (
           <div className={styles.currentIpRow}>
             <div className={styles.currentIpText}>
-              <span>Detected WAN IP:</span>
+              <span>{t('whitelist.ipCardTitle', 'Detected WAN IP')}:</span>
               <strong className="mono">{publicIp}</strong>
               <span className={styles.unlistedTag}>(not whitelisted)</span>
             </div>
@@ -186,7 +225,7 @@ export default function Whitelist() {
               onClick={() => handleAddIp(publicIp)}
               disabled={loading}
             >
-              + Whitelist My IP
+              + {t('whitelist.btnSync', 'Whitelist My IP')}
             </button>
           </div>
         )}
@@ -201,14 +240,18 @@ export default function Whitelist() {
 
       {/* List Header */}
       <div className={styles.listHeader}>
-        <span className={styles.countLabel}>Allowed Addresses</span>
+        <span className={styles.countLabel}>
+          {t('whitelist.historyTitle', 'Allowed Addresses')}
+        </span>
         <span className="badge">{ips.length}</span>
       </div>
 
       {/* Whitelist Rows */}
       {ips.length === 0 ? (
         <div className={styles.empty}>
-          {loading ? 'Reading whitelist from Squid server...' : 'No IP addresses found in server whitelist.'}
+          {loading
+            ? 'Reading whitelist from Squid server...'
+            : t('whitelist.noHistory', 'No IP addresses found in server whitelist.')}
         </div>
       ) : (
         <div className={styles.list}>

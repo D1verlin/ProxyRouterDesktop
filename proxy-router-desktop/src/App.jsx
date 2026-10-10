@@ -15,8 +15,9 @@ import Whitelist from './pages/Whitelist';
 import { useEffect } from 'react';
 import ActivityLog from './pages/ActivityLog';
 import Settings from './pages/Settings';
-import { useAppStore } from './store/useAppStore';
+import { useAppStore, getEffectiveProxyHost } from './store/useAppStore';
 import { usePacServer } from './hooks/usePacServer';
+import { useTauri } from './hooks/useTauri';
 import styles from './App.module.css';
 
 function PacSync() {
@@ -25,12 +26,7 @@ function PacSync() {
   const { updateConfig } = usePacServer();
 
   useEffect(() => {
-    let proxyHost = '127.0.0.1';
-    try {
-      if (serverConfig?.apiUrl) {
-        proxyHost = new URL(serverConfig.apiUrl).hostname;
-      }
-    } catch {}
+    const proxyHost = getEffectiveProxyHost(serverConfig);
 
     const enabledHosts = (presetSites || [])
       .filter(s => s.enabled)
@@ -42,7 +38,53 @@ function PacSync() {
       enabledHosts,
       customDomains: customDomains || [],
     }).catch(() => {});
-  }, [presetSites, customDomains, serverConfig?.apiUrl, updateConfig]);
+  }, [presetSites, customDomains, serverConfig, updateConfig]);
+
+  return null;
+}
+
+function TraySync() {
+  const { state, dispatch } = useAppStore();
+  const { updateTrayIcon, setSystemProxy, clearSystemProxy, isTauri } = useTauri();
+
+  useEffect(() => {
+    updateTrayIcon(state.isActive).catch(() => {});
+  }, [state.isActive, updateTrayIcon]);
+
+  useEffect(() => {
+    if (!isTauri) return;
+    let unlisten = null;
+    (async () => {
+      try {
+        const { listen } = await import('@tauri-apps/api/event');
+        unlisten = await listen('tray-toggle-proxy', async () => {
+          const nextActive = !state.isActive;
+          try {
+            if (nextActive) {
+              await setSystemProxy('http://127.0.0.1:8182/proxy.pac');
+            } else {
+              await clearSystemProxy();
+            }
+            dispatch({ type: 'SET_ACTIVE', payload: nextActive });
+            dispatch({
+              type: 'ADD_LOG_ENTRY',
+              payload: {
+                category: 'ROUTE',
+                level: 'info',
+                msg: nextActive ? 'Proxy activated via system tray' : 'Proxy deactivated via system tray',
+              },
+            });
+          } catch (err) {
+            console.error('[TraySync] Failed to toggle proxy from tray:', err);
+          }
+        });
+      } catch {}
+    })();
+
+    return () => {
+      if (typeof unlisten === 'function') unlisten();
+    };
+  }, [state.isActive, dispatch, setSystemProxy, clearSystemProxy, isTauri]);
 
   return null;
 }
@@ -54,6 +96,7 @@ function MainLayout() {
   return (
     <HashRouter>
       <PacSync />
+      <TraySync />
       <div className={styles.windowShell}>
         {/* Custom Window Titlebar & Native Window Controls */}
         <Titlebar />

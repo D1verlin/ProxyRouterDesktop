@@ -6,7 +6,9 @@ use std::process::Command;
 use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::Duration;
-use tauri::{command, Window};
+use tauri::image::Image;
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::{command, AppHandle, Window};
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
@@ -49,8 +51,8 @@ fn generate_pac_script(proxy_host: &str, proxy_port: u16, hosts: &[String]) -> S
 
         // Match both the exact apex domain (e.g. chatgpt.com) and all its subdomains (e.g. *.chatgpt.com)
         conditions.push(format!(
-            "    shExpMatch(host, \"{}\") || shExpMatch(host, \"*.{}\")",
-            domain, domain
+            "    dnsDomainIs(host, \".{}\") || host === \"{}\" || shExpMatch(host, \"*.{}\")",
+            domain, domain, domain
         ));
     }
 
@@ -107,6 +109,9 @@ pub fn start_embedded_pac_server() {
         "claude.ai".to_string(),
         "anthropic.com".to_string(),
         "claudeusercontent.com".to_string(),
+        "deepl.com".to_string(),
+        "linguee.com".to_string(),
+        "deepl-partners.com".to_string(),
     ];
     let default_pac = generate_pac_script("2.27.25.190", 3128, &default_domains);
     if let Ok(mut lock) = PAC_CONTENT.write() {
@@ -161,7 +166,7 @@ pub fn start_embedded_pac_server() {
                                 .unwrap_or_else(|| Arc::new("function FindProxyForURL(url, host) { return 'DIRECT'; }".to_string()))
                         };
                         let resp = format!(
-                            "HTTP/1.1 200 OK\r\nContent-Type: application/x-ns-proxy-autoconfig\r\nAccess-Control-Allow-Origin: *\r\nCache-Control: no-cache\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                            "HTTP/1.1 200 OK\r\nContent-Type: application/x-ns-proxy-autoconfig\r\nAccess-Control-Allow-Origin: *\r\nCache-Control: no-cache, no-store, must-revalidate\r\nPragma: no-cache\r\nExpires: 0\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                             pac.len(), *pac
                         );
                         let _ = stream.write_all(resp.as_bytes());
@@ -338,12 +343,28 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
     Ok(())
 }
 
+fn resolve_effective_proxy_target(host: &str, port: u16) -> (String, u16) {
+    let trimmed = host.trim();
+    let eff_host = if trimmed.is_empty()
+        || trimmed.contains("your-server-ip")
+        || trimmed == "127.0.0.1"
+        || trimmed == "localhost"
+    {
+        "2.27.25.190".to_string()
+    } else {
+        trimmed.to_string()
+    };
+    let eff_port = if port == 0 { 3128 } else { port };
+    (eff_host, eff_port)
+}
+
 /// Updates upstream proxy target in memory
 #[command]
 pub fn update_upstream_proxy(proxy_host: String, proxy_port: u16) -> Result<String, String> {
+    let (eff_host, eff_port) = resolve_effective_proxy_target(&proxy_host, proxy_port);
     if let Ok(mut lock) = UPSTREAM_PROXY.write() {
-        *lock = (proxy_host.trim().to_string(), proxy_port);
-        Ok(format!("Upstream proxy set to {}:{}", proxy_host, proxy_port))
+        *lock = (eff_host.clone(), eff_port);
+        Ok(format!("Upstream proxy set to {}:{}", eff_host, eff_port))
     } else {
         Err("Failed to acquire write lock for UPSTREAM_PROXY".to_string())
     }
@@ -352,10 +373,11 @@ pub fn update_upstream_proxy(proxy_host: String, proxy_port: u16) -> Result<Stri
 /// Updates PAC rules in memory from the Tauri UI
 #[command]
 pub fn update_pac_rules(proxy_host: String, proxy_port: u16, hosts: Vec<String>) -> Result<String, String> {
+    let (eff_host, eff_port) = resolve_effective_proxy_target(&proxy_host, proxy_port);
     if let Ok(mut lock) = UPSTREAM_PROXY.write() {
-        *lock = (proxy_host.trim().to_string(), proxy_port);
+        *lock = (eff_host.clone(), eff_port);
     }
-    let script = generate_pac_script(&proxy_host, proxy_port, &hosts);
+    let script = generate_pac_script(&eff_host, eff_port, &hosts);
     if let Ok(mut lock) = PAC_CONTENT.write() {
         *lock = Some(Arc::new(script));
         Ok("PAC rules updated".to_string())
@@ -665,8 +687,16 @@ pub fn launch_proxied_terminal() -> Result<u32, String> {
         "Write-Host '=====================================================' -ForegroundColor Cyan; "
     );
 
-    let mut cmd = Command::new("powershell.exe");
-    cmd.args(["-NoExit", "-Command", script]);
+    let mut cmd = Command::new("cmd.exe");
+    cmd.args([
+        "/c",
+        "start",
+        "Proxy Router Terminal",
+        "powershell.exe",
+        "-NoExit",
+        "-Command",
+        script,
+    ]);
 
     let child = cmd
         .spawn()
@@ -714,11 +744,122 @@ pub fn set_terminal_env_proxy(proxy_url: Option<String>, enabled: bool) -> Resul
     }
 }
 
-// ── Window Control Commands ───────────────────────────────────────────────────
+// ── Autostart & Dynamic Tray Icon Commands ─────────────────────────────────
+
+pub const TRAY_ACTIVE_BYTES: &[u8] = include_bytes!("../icons/tray-active.png");
+pub const TRAY_INACTIVE_BYTES: &[u8] = include_bytes!("../icons/tray-inactive.png");
+
+const AUTOSTART_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+const AUTOSTART_NAME: &str = "ProxyRouterDesktop";
+
+#[command]
+pub fn get_autostart_status() -> Result<bool, String> {
+    let out = hidden_command("reg")
+        .args(["query", AUTOSTART_KEY, "/v", AUTOSTART_NAME])
+        .output()
+        .map_err(|e| format!("Registry query error: {}", e))?;
+    Ok(out.status.success())
+}
+
+#[command]
+pub fn set_autostart(enabled: bool) -> Result<(), String> {
+    if enabled {
+        let current_exe = std::env::current_exe()
+            .map_err(|e| format!("Failed to get executable path: {}", e))?;
+        let exe_str = current_exe.to_string_lossy().to_string();
+        let cmd_val = format!("\"{}\" --silent", exe_str);
+        let out = hidden_command("reg")
+            .args(["add", AUTOSTART_KEY, "/v", AUTOSTART_NAME, "/t", "REG_SZ", "/d", &cmd_val, "/f"])
+            .output()
+            .map_err(|e| format!("Failed to register autostart: {}", e))?;
+        if !out.status.success() {
+            return Err(format!(
+                "Failed to set autostart in registry: {}",
+                String::from_utf8_lossy(&out.stderr)
+            ));
+        }
+    } else {
+        let _ = hidden_command("reg")
+            .args(["delete", AUTOSTART_KEY, "/v", AUTOSTART_NAME, "/f"])
+            .output();
+    }
+    Ok(())
+}
+
+pub fn build_tray_menu<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    active: bool,
+) -> Result<Menu<R>, tauri::Error> {
+    let status_text = if active {
+        "Proxy Router: Active"
+    } else {
+        "Proxy Router: Disconnected"
+    };
+    let toggle_text = if active {
+        "Disable Proxy"
+    } else {
+        "Enable Proxy"
+    };
+
+    let status_header = MenuItem::with_id(app, "status_info", status_text, false, None::<&str>)?;
+    let sep1 = PredefinedMenuItem::separator(app)?;
+    let toggle_proxy_item = MenuItem::with_id(app, "toggle_proxy", toggle_text, true, None::<&str>)?;
+    let terminal_item = MenuItem::with_id(app, "open_terminal", "Open Proxied Terminal", true, None::<&str>)?;
+    let sep2 = PredefinedMenuItem::separator(app)?;
+    let show_window_item = MenuItem::with_id(app, "show_window", "Show Proxy Router", true, None::<&str>)?;
+    let hide_window_item = MenuItem::with_id(app, "hide_window", "Hide to Tray", true, None::<&str>)?;
+    let sep3 = PredefinedMenuItem::separator(app)?;
+    let quit_item = MenuItem::with_id(app, "quit_app", "Quit Proxy Router", true, None::<&str>)?;
+
+    Menu::with_items(
+        app,
+        &[
+            &status_header,
+            &sep1,
+            &toggle_proxy_item,
+            &terminal_item,
+            &sep2,
+            &show_window_item,
+            &hide_window_item,
+            &sep3,
+            &quit_item,
+        ],
+    )
+}
+
+#[command]
+pub fn update_tray_icon(app: AppHandle, active: bool) -> Result<(), String> {
+    if let Some(tray) = app.tray_by_id("main_tray") {
+        let img_bytes = if active { TRAY_ACTIVE_BYTES } else { TRAY_INACTIVE_BYTES };
+        if let Ok(icon) = Image::from_bytes(img_bytes) {
+            let _ = tray.set_icon(Some(icon));
+        }
+        let tooltip = if active {
+            "Proxy Router: Active (Connected)"
+        } else {
+            "Proxy Router: Disconnected"
+        };
+        let _ = tray.set_tooltip(Some(tooltip));
+
+        if let Ok(menu) = build_tray_menu(&app, active) {
+            let _ = tray.set_menu(Some(menu));
+        }
+    }
+    Ok(())
+}
+
+#[command]
+pub fn app_quit(app: AppHandle) -> Result<(), String> {
+    let _ = clear_system_proxy();
+    app.exit(0);
+    Ok(())
+}
+
+// ── Window Control Commands (Minimize to Tray) ───────────────────────────────
 
 #[command]
 pub fn window_minimize(window: Window) -> Result<(), String> {
-    window.minimize().map_err(|e| e.to_string())
+    window.hide().map_err(|e| e.to_string())
 }
 
 #[command]
@@ -732,7 +873,7 @@ pub fn window_toggle_maximize(window: Window) -> Result<(), String> {
 
 #[command]
 pub fn window_close(window: Window) -> Result<(), String> {
-    window.close().map_err(|e| e.to_string())
+    window.hide().map_err(|e| e.to_string())
 }
 
 // ── Registry & WinInet helpers ──────────────────────────────────────────────

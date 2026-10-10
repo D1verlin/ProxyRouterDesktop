@@ -37,6 +37,9 @@ export function useStorageHydrate() {
       if (typeof saved.terminalProxyActive === 'boolean') {
         dispatch({ type: 'SET_TERMINAL_PROXY', payload: saved.terminalProxyActive });
       }
+      if (saved.language === 'en' || saved.language === 'ru') {
+        dispatch({ type: 'SET_LANGUAGE', payload: saved.language });
+      }
     } catch {
       localStorage.removeItem(STORAGE_KEY);
     }
@@ -55,10 +58,11 @@ export function useStoragePersist() {
         presetSiteIds:       state.presetSites.filter(s => s.enabled).map(s => s.id),
         routedApps:          state.routedApps,
         terminalProxyActive: state.terminalProxyActive,
+        language:            state.language || 'en',
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
     } catch {
       // quota exceeded
     }
-  }, [state.serverConfig, state.customDomains, state.presetSites, state.routedApps, state.terminalProxyActive]);
+  }, [state.serverConfig, state.customDomains, state.presetSites, state.routedApps, state.terminalProxyActive, state.language]);
 }

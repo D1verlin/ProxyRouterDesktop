@@ -44,6 +44,14 @@ async function invoke(cmd, args = {}) {
       return (args.names || []).map(name => ({ query: name, is_running: false, process_name: name }));
     case 'kill_process':
       return null;
+    case 'get_autostart_status':
+      return false;
+    case 'set_autostart':
+      return null;
+    case 'update_tray_icon':
+      return null;
+    case 'app_quit':
+      return null;
     case 'window_minimize':
     case 'window_toggle_maximize':
     case 'window_close':
@@ -147,6 +155,22 @@ export function useTauri() {
     });
   }, []);
 
+  const getAutostartStatus = useCallback(async () => {
+    return invoke('get_autostart_status');
+  }, []);
+
+  const setAutostart = useCallback(async (enabled) => {
+    return invoke('set_autostart', { enabled: Boolean(enabled) });
+  }, []);
+
+  const updateTrayIcon = useCallback(async (active) => {
+    return invoke('update_tray_icon', { active: Boolean(active) });
+  }, []);
+
+  const appQuit = useCallback(async () => {
+    return invoke('app_quit');
+  }, []);
+
   const minimizeWindow = useCallback(async () => {
     return invoke('window_minimize');
   }, []);
@@ -172,6 +196,10 @@ export function useTauri() {
     launchAppWithProxy,
     launchProxiedTerminal,
     setTerminalEnvProxy,
+    getAutostartStatus,
+    setAutostart,
+    updateTrayIcon,
+    appQuit,
     minimizeWindow,
     toggleMaximizeWindow,
     closeWindow,

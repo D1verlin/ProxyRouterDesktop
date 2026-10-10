@@ -4,14 +4,14 @@
  */
 
 import { useState, useMemo } from 'react';
-import { Trash2, Copy, Check, Search, Filter } from 'lucide-react';
+import { Trash2, Copy, Check, Search } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import styles from './ActivityLog.module.css';
 
 const CATEGORIES = ['ALL', 'NET', 'AUTH', 'SYS', 'PAC', 'PROC', 'CLI'];
 
 export default function ActivityLog() {
-  const { state, dispatch } = useAppStore();
+  const { state, dispatch, t } = useAppStore();
   const { log } = state;
 
   const [activeCategory, setActiveCategory] = useState('ALL');
@@ -34,7 +34,10 @@ export default function ActivityLog() {
   const handleCopyAll = () => {
     if (log.length === 0) return;
     const text = log
-      .map(e => `[${e.ts}] [${e.category || 'SYS'}] [${(e.level || 'INFO').toUpperCase()}] ${e.msg}`)
+      .map(
+        (e) =>
+          `[${e.ts}] [${e.category || 'SYS'}] [${(e.level || 'INFO').toUpperCase()}] ${e.msg}`
+      )
       .join('\n');
     navigator.clipboard.writeText(text);
     setCopied(true);
@@ -45,8 +48,13 @@ export default function ActivityLog() {
     <div className={styles.page}>
       <header className={styles.header}>
         <div>
-          <h1 className={styles.title}>Activity Telemetry Log</h1>
-          <p className={styles.subtitle}>Granular routing audits, network handshakes, and system events.</p>
+          <h1 className={styles.title}>{t('log.title', 'Activity & Event Log')}</h1>
+          <p className={styles.subtitle}>
+            {t(
+              'log.subtitle',
+              'Real-time audit log of proxy tunnels, routing events, and authentication.'
+            )}
+          </p>
         </div>
 
         <div className={styles.topActions}>
@@ -59,7 +67,7 @@ export default function ActivityLog() {
             title="Copy entire log to clipboard"
           >
             {copied ? <Check size={13} color="#ffffff" /> : <Copy size={13} />}
-            {copied ? 'Copied' : 'Copy All'}
+            {copied ? t('common.copied', 'Copied') : t('common.copy', 'Copy All')}
           </button>
 
           <button
@@ -71,7 +79,7 @@ export default function ActivityLog() {
             title="Clear all recorded entries"
           >
             <Trash2 size={13} />
-            Clear
+            {t('log.btnClear', 'Clear Log')}
           </button>
         </div>
       </header>
@@ -98,7 +106,7 @@ export default function ActivityLog() {
               className={`${styles.catPill} ${activeCategory === cat ? styles.catPillActive : ''}`}
               onClick={() => setActiveCategory(cat)}
             >
-              {cat}
+              {cat === 'ALL' ? t('log.filterAll', 'ALL') : cat}
             </button>
           ))}
         </div>
@@ -108,7 +116,7 @@ export default function ActivityLog() {
       {filteredLog.length === 0 ? (
         <div className={styles.empty}>
           {log.length === 0
-            ? 'No activity recorded yet. System events will appear here in real time.'
+            ? t('log.noLogs', 'Log is empty.')
             : 'No log entries match your current filter.'}
         </div>
       ) : (
@@ -119,7 +127,9 @@ export default function ActivityLog() {
               <div key={entry.id} className={styles.row}>
                 <span className={`mono ${styles.ts}`}>{entry.ts}</span>
 
-                <span className={`${styles.catBadge} ${styles[`cat_${entry.category || 'SYS'}`]}`}>
+                <span
+                  className={`${styles.catBadge} ${styles[`cat_${entry.category || 'SYS'}`]}`}
+                >
                   [{entry.category || 'SYS'}]
                 </span>
 

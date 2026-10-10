@@ -6,7 +6,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertCircle, ArrowRight } from 'lucide-react';
-import { useAppStore } from '../store/useAppStore';
+import { useAppStore, getEffectiveProxyHost } from '../store/useAppStore';
 import { useTauri } from '../hooks/useTauri';
 import { usePacServer } from '../hooks/usePacServer';
 import PlanetVisualizer from '../components/PlanetVisualizer';
@@ -14,7 +14,7 @@ import styles from './Dashboard.module.css';
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { state, dispatch } = useAppStore();
+  const { state, dispatch, t } = useAppStore();
   const {
     isActive,
     publicIp,
@@ -115,7 +115,7 @@ export default function Dashboard() {
         type: 'ADD_LOG_ENTRY',
         payload: { category: 'AUTH', level: 'error', msg: `Whitelist API request failed: ${err.message}` },
       });
-      setErrorNotice(`Ошибка подключения: ${err.message}. Проверьте сервер и токен в настройках.`);
+      setErrorNotice(`${t('whitelist.statusError', 'Whitelist request failed')}: ${err.message}`);
       return false;
     } finally {
       dispatch({ type: 'SET_WHITELISTING', payload: false });
@@ -165,7 +165,7 @@ export default function Dashboard() {
         // 2. Detect WAN IP
         const ip = await fetchIp();
         if (!ip) {
-          setErrorNotice('Не удалось определить внешний IP. Проверьте подключение к интернету.');
+          setErrorNotice(t('dashboard.statCheckingIp', 'Could not detect public IPv4. Check network connection.'));
           return;
         }
 
@@ -184,15 +184,7 @@ export default function Dashboard() {
         }
 
         // 4. Update PAC server rules with currently enabled sites and VPS proxy host
-        let proxyHost = '2.27.25.190';
-        try {
-          if (serverConfig?.apiUrl) {
-            const h = new URL(serverConfig.apiUrl).hostname;
-            if (h && h !== 'localhost' && h !== '127.0.0.1' && !h.includes('your-server-ip')) {
-              proxyHost = h;
-            }
-          }
-        } catch {}
+        const proxyHost = getEffectiveProxyHost(serverConfig);
 
         const enabledHosts = presetSites
           .filter(s => s.enabled)

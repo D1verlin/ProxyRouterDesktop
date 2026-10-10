@@ -24,12 +24,12 @@ import {
   Layers,
   Radio,
 } from 'lucide-react';
-import { useAppStore } from '../store/useAppStore';
+import { useAppStore, getEffectiveProxyHost } from '../store/useAppStore';
 import { useTauri } from '../hooks/useTauri';
 import styles from './Apps.module.css';
 
 export default function Apps() {
-  const { state, dispatch } = useAppStore();
+  const { state, dispatch, t } = useAppStore();
   const { routedApps, terminalProxyActive, autoRouteDetected, proxyHost, proxyPort } = state;
   const {
     pickExeFile,
@@ -51,10 +51,10 @@ export default function Apps() {
 
   // Keep Rust upstream proxy target in sync whenever proxyHost/proxyPort changes
   useEffect(() => {
-    const host = proxyHost || '2.27.25.190';
+    const host = proxyHost || getEffectiveProxyHost(state.serverConfig);
     const port = proxyPort || 3128;
     updateUpstreamProxy(host, port).catch(() => {});
-  }, [proxyHost, proxyPort, updateUpstreamProxy]);
+  }, [proxyHost, proxyPort, state.serverConfig, updateUpstreamProxy]);
 
   // ── Browse .exe using native Windows Explorer ──────────────────────────────
   const handleBrowseExe = async () => {
@@ -233,9 +233,12 @@ export default function Apps() {
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <h1 className={styles.title}>Маршрутизация приложений</h1>
+        <h1 className={styles.title}>{t('apps.title', 'Application Traffic Routing')}</h1>
         <p className={styles.subtitle}>
-          Выборочный перехват и изоляция сетевого трафика .exe программ через локальный туннель :8183
+          {t(
+            'apps.subtitle',
+            'Selective interception and isolation of application network traffic via local tunnel :8183'
+          )}
         </p>
       </header>
 
@@ -246,10 +249,12 @@ export default function Apps() {
             <Radio size={16} />
           </div>
           <div className={styles.cardText}>
-            <span className={styles.cardTitle}>Локальный прокси-форвардер (порт 8183)</span>
+            <span className={styles.cardTitle}>
+              {t('apps.forwarderTitle', 'Local Proxy Forwarder (Port 8183)')}
+            </span>
             <span className={styles.cardSub}>
-              Трафик приложений перенаправляется на удаленный сервер{' '}
-              <code className="mono">{proxyHost || '2.27.25.190'}:{proxyPort || 3128}</code>
+              {t('apps.forwarderSub', 'Application traffic is forwarded to the upstream server')}{' '}
+              <code className="mono">{proxyHost || getEffectiveProxyHost(state.serverConfig)}:{proxyPort || 3128}</code>
             </span>
           </div>
         </div>
@@ -258,10 +263,10 @@ export default function Apps() {
           className="btn-secondary"
           onClick={handleLaunchProxiedTerminal}
           style={{ height: '32px', fontSize: '12px' }}
-          title="Запустить отдельное окно PowerShell с уже настроенным прокси"
+          title={t('apps.openTerminal', 'Launch Proxied PowerShell Terminal')}
         >
           <Terminal size={13} />
-          Открыть PowerShell с прокси
+          {t('apps.openTerminal', 'Proxied PowerShell')}
         </button>
       </div>
 
@@ -272,9 +277,14 @@ export default function Apps() {
             <Terminal size={17} />
           </div>
           <div className={styles.cardText}>
-            <span className={styles.cardTitle}>Глобальный CLI &amp; Terminal Прокси</span>
+            <span className={styles.cardTitle}>
+              {t('apps.terminalEnv', 'Global CLI & Terminal Proxy')}
+            </span>
             <span className={styles.cardSub}>
-              Записывает <code className="mono">HTTP_PROXY</code> в Windows Environment для Git, Node, Python, Curl и терминалов.
+              {t(
+                'apps.terminalEnvDesc',
+                'Sets HTTP_PROXY in Windows Environment for Git, Node, Python, Curl and terminals.'
+              )}
             </span>
           </div>
         </div>
@@ -297,9 +307,14 @@ export default function Apps() {
             <RotateCw size={17} />
           </div>
           <div className={styles.cardText}>
-            <span className={styles.cardTitle}>Автоперезапуск немаршрутизируемых процессов</span>
+            <span className={styles.cardTitle}>
+              {t('apps.autoRouteTitle', 'Auto-Relaunch Unrouted Processes')}
+            </span>
             <span className={styles.cardSub}>
-              Автоматически перезапускает отслеживаемые приложения с прокси, если они открыты вне менеджера.
+              {t(
+                'apps.autoRouteDesc',
+                'Automatically relaunches monitored apps through proxy if opened directly.'
+              )}
             </span>
           </div>
         </div>
@@ -309,7 +324,9 @@ export default function Apps() {
           aria-checked={autoRouteDetected}
           tabIndex={0}
           onClick={() => dispatch({ type: 'SET_AUTO_ROUTE_DETECTED', payload: !autoRouteDetected })}
-          onKeyDown={(e) => e.key === ' ' && dispatch({ type: 'SET_AUTO_ROUTE_DETECTED', payload: !autoRouteDetected })}
+          onKeyDown={(e) =>
+            e.key === ' ' && dispatch({ type: 'SET_AUTO_ROUTE_DETECTED', payload: !autoRouteDetected })
+          }
         >
           <span className={styles.toggleThumb} />
         </div>
@@ -323,13 +340,15 @@ export default function Apps() {
 
       {/* Add Executable via Windows Explorer */}
       <div className={styles.addCard}>
-        <span className={styles.sectionTitle}>Добавить исполняемый файл (.exe)</span>
+        <span className={styles.sectionTitle}>
+          {t('apps.addApp', 'Add Executable (.exe)')}
+        </span>
 
         <div className={styles.formGrid}>
           <input
             type="text"
             className="input"
-            placeholder="Название программы (например, Cursor или Telegram)"
+            placeholder={t('apps.appNamePlaceholder', 'Program Name (e.g. Cursor or Telegram)')}
             value={appName}
             onChange={(e) => setAppName(e.target.value)}
           />
@@ -338,7 +357,7 @@ export default function Apps() {
             <input
               type="text"
               className={`input ${styles.pathInput}`}
-              placeholder="Полный путь к .exe (например, C:\Program Files\...)"
+              placeholder={t('apps.appPathPlaceholder', 'Full path to .exe (e.g. C:\\Program Files\\...)')}
               value={appPath}
               onChange={(e) => setAppPath(e.target.value)}
             />
@@ -346,10 +365,10 @@ export default function Apps() {
               type="button"
               className="btn-secondary"
               onClick={handleBrowseExe}
-              title="Открыть проводник Windows"
+              title="Open Windows File Explorer"
             >
               <FolderOpen size={14} />
-              Обзор...
+              {t('apps.browse', 'Browse...')}
             </button>
           </div>
 
@@ -360,20 +379,22 @@ export default function Apps() {
             disabled={!appPath.trim()}
           >
             <Plus size={14} />
-            Добавить приложение
+            {t('apps.btnAdd', 'Add Application')}
           </button>
         </div>
       </div>
 
       {/* Applications List */}
       <div className={styles.listHeader}>
-        <span className={styles.countLabel}>Отслеживаемые программы</span>
+        <span className={styles.countLabel}>
+          {t('apps.trackedApps', 'Monitored Applications')}
+        </span>
         <span className="badge">{routedApps.length}</span>
       </div>
 
       {routedApps.length === 0 ? (
         <div className={styles.empty}>
-          Нет добавленных приложений. Нажмите «Обзор...» выше, чтобы выбрать исполняемый файл.
+          {t('apps.noAppsDesc', 'No applications added. Click "Browse..." above to select an executable file.')}
         </div>
       ) : (
         <div className={styles.list}>
@@ -389,17 +410,19 @@ export default function Apps() {
                     {isProxied && (
                       <span className="badge active">
                         <CheckCircle2 size={10} style={{ marginRight: 4 }} />
-                        Работает (через прокси)
+                        {t('apps.appStatusRunning', 'Running (via Proxy)')}
                       </span>
                     )}
                     {isDirect && (
                       <span className={`${styles.warnBadge}`}>
                         <AlertTriangle size={10} style={{ marginRight: 4 }} />
-                        Работает (напрямую)
+                        {t('apps.appStatusDirect', 'Running (Direct)')}
                       </span>
                     )}
                     {!app.isRunning && (
-                      <span className="badge">Не запущен</span>
+                      <span className="badge">
+                        {t('apps.appStatusStopped', 'Not Running')}
+                      </span>
                     )}
                   </div>
                   <span className={`mono ${styles.appPath}`}>{app.path}</span>
@@ -412,10 +435,10 @@ export default function Apps() {
                       className="btn-primary"
                       style={{ height: '32px', fontSize: '12px' }}
                       onClick={() => handleRelaunchRouted(app)}
-                      title="Закрыть существующий экземпляр и перезапустить с прокси"
+                      title="Kill existing instance and restart with proxy"
                     >
                       <RotateCw size={12} />
-                      Перезапустить с прокси
+                      {t('apps.relaunchProxied', 'Relaunch with Proxy')}
                     </button>
                   ) : (
                     <>
@@ -424,10 +447,10 @@ export default function Apps() {
                         className="btn-primary"
                         style={{ height: '32px', fontSize: '12px' }}
                         onClick={() => handleLaunchRouted(app, true)}
-                        title="Запустить изолированно (работает параллельно с запущенным процессом)"
+                        title="Launch in isolated profile"
                       >
                         <Play size={11} fill="currentColor" />
-                        Запуск
+                        {t('apps.launchBtn', 'Launch')}
                       </button>
 
                       <button
@@ -435,10 +458,10 @@ export default function Apps() {
                         className="btn-secondary"
                         style={{ height: '32px', fontSize: '12px' }}
                         onClick={() => handleRelaunchRouted(app)}
-                        title="Принудительно перезапустить процесс с флагами прокси"
+                        title="Force restart process with proxy flags"
                       >
                         <RotateCw size={12} />
-                        Перезапуск
+                        {t('apps.restartBtn', 'Restart')}
                       </button>
                     </>
                   )}
@@ -447,7 +470,7 @@ export default function Apps() {
                     type="button"
                     className="btn-icon"
                     onClick={() => dispatch({ type: 'REMOVE_ROUTED_APP', payload: app.id })}
-                    title="Удалить из списка"
+                    title={t('apps.removeBtn', 'Remove')}
                   >
                     <Trash2 size={13} />
                   </button>

@@ -1,9 +1,10 @@
 /**
  * Settings page – server API URL, auth token, PAC server port,
+ * Language selector (EN / RU), Windows Autostart toggle (Silent in Tray),
  * and Profile Transfer (Export / Import via Drag & Drop or key).
  */
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   Eye,
   EyeOff,
@@ -19,8 +20,11 @@ import {
   Info,
   RefreshCw,
   ExternalLink,
+  Sliders,
+  Radio,
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
+import { useTauri } from '../hooks/useTauri';
 import styles from './Settings.module.css';
 
 const CURRENT_VERSION = '1.0.7';
@@ -50,8 +54,10 @@ const openExternalLink = async (url) => {
 };
 
 export default function Settings() {
-  const { state, dispatch } = useAppStore();
-  const { serverConfig } = state;
+  const { state, dispatch, t } = useAppStore();
+  const { serverConfig, language, autostart } = state;
+  const { getAutostartStatus, setAutostart } = useTauri();
+
   const [form, setForm] = useState({ ...serverConfig });
   const [showToken, setShowToken] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -63,6 +69,15 @@ export default function Settings() {
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef(null);
 
+  // Sync autostart status from registry on mount
+  useEffect(() => {
+    getAutostartStatus()
+      .then((status) => {
+        dispatch({ type: 'SET_AUTOSTART', payload: Boolean(status) });
+      })
+      .catch(() => {});
+  }, [getAutostartStatus, dispatch]);
+
   // Update checker states
   const [updateState, setUpdateState] = useState({
     status: 'idle', // 'idle' | 'checking' | 'latest' | 'available' | 'error'
@@ -73,8 +88,38 @@ export default function Settings() {
     checkedAt: null,
   });
 
+  const handleToggleAutostart = async () => {
+    const nextVal = !autostart;
+    try {
+      await setAutostart(nextVal);
+      dispatch({ type: 'SET_AUTOSTART', payload: nextVal });
+      dispatch({
+        type: 'ADD_LOG_ENTRY',
+        payload: {
+          category: 'SYS',
+          level: 'info',
+          msg: nextVal
+            ? 'Windows autostart enabled (runs silently in tray)'
+            : 'Windows autostart disabled',
+        },
+      });
+      setNotice({
+        type: 'success',
+        text: nextVal
+          ? 'Autostart on boot enabled (silent in tray)'
+          : 'Autostart on boot disabled',
+      });
+      setTimeout(() => setNotice(null), 3000);
+    } catch (err) {
+      setNotice({
+        type: 'error',
+        text: `Failed to configure autostart: ${err}`,
+      });
+    }
+  };
+
   const handleCheckUpdate = async () => {
-    setUpdateState(prev => ({ ...prev, status: 'checking', message: '' }));
+    setUpdateState((prev) => ({ ...prev, status: 'checking', message: '' }));
     try {
       const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
         headers: {
@@ -82,7 +127,11 @@ export default function Settings() {
         },
       });
 
-      const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const now = new Date().toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      });
 
       if (res.status === 404) {
         setUpdateState({
@@ -90,14 +139,14 @@ export default function Settings() {
           remoteVersion: null,
           releaseUrl: GITHUB_RELEASES_URL,
           releaseName: '',
-          message: `Релизов на GitHub пока нет. Ваша версия v${CURRENT_VERSION} является актуальной.`,
+          message: `${t('settings.latestVersion', 'You are using the latest version')} (v${CURRENT_VERSION})`,
           checkedAt: now,
         });
         return;
       }
 
       if (!res.ok) {
-        throw new Error(`GitHub API вернул статус ${res.status}`);
+        throw new Error(`GitHub API error: HTTP ${res.status}`);
       }
 
       const data = await res.json();
@@ -110,7 +159,7 @@ export default function Settings() {
           remoteVersion: tag,
           releaseUrl: data.html_url || GITHUB_RELEASES_URL,
           releaseName: data.name || tag,
-          message: `Доступна новая версия: ${tag}`,
+          message: `${t('settings.updateAvailable', 'Update available')}: ${tag}`,
           checkedAt: now,
         });
       } else {
@@ -119,24 +168,28 @@ export default function Settings() {
           remoteVersion: tag,
           releaseUrl: data.html_url || GITHUB_RELEASES_URL,
           releaseName: data.name || tag,
-          message: `У вас установлена последняя версия (v${CURRENT_VERSION})`,
+          message: `${t('settings.latestVersion', 'You are using the latest version')} (v${CURRENT_VERSION})`,
           checkedAt: now,
         });
       }
     } catch (err) {
-      const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const now = new Date().toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      });
       setUpdateState({
         status: 'error',
         remoteVersion: null,
         releaseUrl: GITHUB_RELEASES_URL,
         releaseName: '',
-        message: err.message || 'Ошибка подключения к серверу обновлений',
+        message: err.message || t('settings.errorUpdates', 'Failed to check updates'),
         checkedAt: now,
       });
     }
   };
 
-  const handleChange = (key, value) => setForm(f => ({ ...f, [key]: value }));
+  const handleChange = (key, value) => setForm((f) => ({ ...f, [key]: value }));
 
   const handleSave = () => {
     dispatch({ type: 'UPDATE_SERVER_CONFIG', payload: form });
@@ -150,7 +203,6 @@ export default function Settings() {
 
   // ── Profile Export ───────────────────────────────────────────────────────────
   const getProfileData = () => {
-    // Derive proxy host/port from API url if possible, default to Squid standard
     let host = '127.0.0.1';
     let port = 3128;
     try {
@@ -160,7 +212,7 @@ export default function Settings() {
 
     return {
       app: 'ProxyRouter',
-      version: '1.0.2',
+      version: '1.0.8',
       apiUrl: form.apiUrl,
       authToken: form.authToken,
       proxyHost: host,
@@ -174,7 +226,7 @@ export default function Settings() {
     const encoded = 'pr://' + btoa(unescape(encodeURIComponent(JSON.stringify(data))));
     navigator.clipboard.writeText(encoded);
     setCopiedKey(true);
-    setNotice({ type: 'success', text: 'Profile key copied to clipboard (pr://...)' });
+    setNotice({ type: 'success', text: t('common.copied', 'Copied to clipboard') });
     setTimeout(() => setCopiedKey(false), 2500);
   };
 
@@ -189,7 +241,7 @@ export default function Settings() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    setNotice({ type: 'success', text: 'Profile file (.json) downloaded' });
+    setNotice({ type: 'success', text: 'Profile configuration (.json) downloaded' });
   };
 
   // ── Profile Import Logic ─────────────────────────────────────────────────────
@@ -197,7 +249,6 @@ export default function Settings() {
     try {
       let jsonStr = rawText.trim();
 
-      // Handle pr:// base64 tokens
       if (jsonStr.startsWith('pr://')) {
         const b64 = jsonStr.slice(5);
         jsonStr = decodeURIComponent(escape(atob(b64)));
@@ -238,7 +289,6 @@ export default function Settings() {
     }
   };
 
-  // Drag and Drop handlers
   const handleDragOver = (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -284,10 +334,8 @@ export default function Settings() {
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <h1 className={styles.title}>Settings & Configuration</h1>
-        <p className={styles.subtitle}>
-          Manage proxy whitelist API connection, keys, and fast profile sharing.
-        </p>
+        <h1 className={styles.title}>{t('settings.title', 'Settings & Preferences')}</h1>
+        <p className={styles.subtitle}>{t('settings.subtitle', 'Configure proxy credentials, system startup, language, and profile sharing.')}</p>
       </header>
 
       {notice && (
@@ -313,38 +361,99 @@ export default function Settings() {
       )}
 
       <div className={styles.form}>
+        {/* ── Section 1: General Preferences & Windows Integration ─────────── */}
+        <div className={styles.sectionHeader}>
+          <Sliders size={16} />
+          <h2 className={styles.sectionTitle}>{t('settings.sectionGeneral', 'General & System Integration')}</h2>
+        </div>
+
+        {/* Interface Language */}
+        <div className={styles.field}>
+          <label className={styles.label}>{t('settings.languageLabel', 'Interface Language')}</label>
+          <div className={styles.segmentedControl}>
+            <button
+              type="button"
+              className={`${styles.segmentBtn} ${language === 'en' ? styles.segmentBtnActive : ''}`}
+              onClick={() => dispatch({ type: 'SET_LANGUAGE', payload: 'en' })}
+            >
+              English
+            </button>
+            <button
+              type="button"
+              className={`${styles.segmentBtn} ${language === 'ru' ? styles.segmentBtnActive : ''}`}
+              onClick={() => dispatch({ type: 'SET_LANGUAGE', payload: 'ru' })}
+            >
+              Русский
+            </button>
+          </div>
+          <p className={styles.hint}>{t('settings.languageDesc', 'Choose your preferred language for the application.')}</p>
+        </div>
+
+        {/* Windows Autostart Toggle */}
+        <div className={styles.toggleCard}>
+          <div className={styles.toggleInfo}>
+            <span className={styles.toggleTitle}>{t('settings.autostartLabel', 'Launch on Windows Startup')}</span>
+            <span className={styles.toggleDesc}>
+              {t(
+                'settings.autostartDesc',
+                'Automatically start Proxy Router in the system tray when computer boots (runs silently without window).'
+              )}
+            </span>
+          </div>
+          <label className={styles.switch}>
+            <input
+              type="checkbox"
+              checked={Boolean(autostart)}
+              onChange={handleToggleAutostart}
+            />
+            <span className={styles.slider} />
+          </label>
+        </div>
+
+        <hr className={styles.separator} />
+
+        {/* ── Section 2: Server & Authentication ────────────────────────────── */}
+        <div className={styles.sectionHeader}>
+          <Radio size={16} />
+          <h2 className={styles.sectionTitle}>{t('settings.sectionServer', 'Server & Authentication')}</h2>
+        </div>
+
         {/* API URL */}
         <div className={styles.field}>
-          <label className={styles.label} htmlFor="apiUrl">Whitelist API URL</label>
+          <label className={styles.label} htmlFor="apiUrl">
+            {t('settings.apiUrlLabel', 'Whitelist API URL')}
+          </label>
           <input
             id="apiUrl"
             type="text"
             className="input"
-            placeholder="http://your-server-ip:1135"
+            placeholder={t('settings.apiUrlPlaceholder', 'http://your-server-ip:1135')}
             value={form.apiUrl}
-            onChange={e => handleChange('apiUrl', e.target.value)}
+            onChange={(e) => handleChange('apiUrl', e.target.value)}
           />
           <p className={styles.hint}>
-            Endpoint receiving <span className="mono">POST /api/whitelist</span> requests.
+            {t('settings.apiUrlHint', 'Endpoint receiving POST /api/whitelist requests.')}
           </p>
         </div>
 
         {/* Auth token */}
         <div className={styles.field}>
-          <label className={styles.label} htmlFor="authToken">Authorization Token (Key)</label>
+          <label className={styles.label} htmlFor="authToken">
+            {t('settings.tokenLabel', 'Authorization Token (Bearer Key)')}
+          </label>
           <div className={styles.tokenRow}>
             <input
               id="authToken"
               type={showToken ? 'text' : 'password'}
               className="input"
-              placeholder="Bearer authorization key"
+              placeholder={t('settings.tokenPlaceholder', 'Bearer authorization key')}
               value={form.authToken}
-              onChange={e => handleChange('authToken', e.target.value)}
+              onChange={(e) => handleChange('authToken', e.target.value)}
             />
             <button
               type="button"
               className="btn-icon"
-              onClick={() => setShowToken(v => !v)}
+              onClick={() => setShowToken((v) => !v)}
               aria-label={showToken ? 'Hide token' : 'Show token'}
               title={showToken ? 'Hide token' : 'Show token'}
             >
@@ -362,8 +471,10 @@ export default function Settings() {
             </span>
           </div>
           <div className={styles.infoRow}>
-            <span className={styles.infoLabel}>Local PAC Port</span>
-            <span className="mono" style={{ color: 'var(--text-primary)', fontSize: 12 }}>8182</span>
+            <span className={styles.infoLabel}>Local Forwarder Port</span>
+            <span className="mono" style={{ color: 'var(--text-primary)', fontSize: 12 }}>
+              127.0.0.1:8183 (CONNECT Tunnel)
+            </span>
           </div>
         </div>
 
@@ -371,30 +482,40 @@ export default function Settings() {
         <div className={styles.actions}>
           <button type="button" className="btn-primary" onClick={handleSave}>
             <Save size={14} />
-            {saved ? 'Saved' : 'Save Credentials'}
+            {saved ? t('common.saved', 'Saved') : t('settings.btnSave', 'Save Credentials')}
           </button>
         </div>
 
         <hr className={styles.separator} />
 
-        {/* Profile Export & Import Section */}
+        {/* ── Section 3: Profile Export & Import Section ────────────────────── */}
         <div className={styles.profileSection}>
           <div className={styles.sectionHeader}>
             <Share2 size={16} />
-            <h2 className={styles.sectionTitle}>Profile Transfer (Export & Import)</h2>
+            <h2 className={styles.sectionTitle}>
+              {t('settings.sectionTransfer', 'Profile Transfer (Export & Import)')}
+            </h2>
           </div>
           <p className={styles.subtitle}>
-            Instantly share your proxy IP, port, and authentication key with another PC.
+            {t(
+              'settings.transferDesc',
+              'Instantly share your proxy credentials and settings with another PC.'
+            )}
           </p>
 
           {/* Export Actions */}
           <div className={styles.exportCard}>
             <div className={styles.exportHeader}>
-              <span className={styles.cardHeading}>Export Current Profile</span>
-              <span className={styles.tag}>Ready</span>
+              <span className={styles.cardHeading}>
+                {t('settings.exportTitle', 'Export Current Profile')}
+              </span>
+              <span className={styles.tag}>{t('common.ready', 'Ready')}</span>
             </div>
             <p className={styles.cardDesc}>
-              Share as a compact key string or download a profile configuration file.
+              {t(
+                'settings.exportDesc',
+                'Copy shareable compact key or download JSON configuration file.'
+              )}
             </p>
             <div className={styles.buttonGroup}>
               <button
@@ -404,7 +525,7 @@ export default function Settings() {
                 title="Copy shareable pr:// token to clipboard"
               >
                 {copiedKey ? <Check size={14} /> : <Copy size={14} />}
-                {copiedKey ? 'Key Copied!' : 'Copy Share Key'}
+                {copiedKey ? t('common.copied', 'Copied') : t('settings.btnCopyKey', 'Copy Share Key')}
               </button>
 
               <button
@@ -414,7 +535,7 @@ export default function Settings() {
                 title="Download JSON configuration"
               >
                 <Download size={14} />
-                Download .json
+                {t('settings.btnDownloadJson', 'Download .json')}
               </button>
             </div>
           </div>
@@ -436,25 +557,25 @@ export default function Settings() {
             />
             <Upload size={22} className={styles.dropIcon} />
             <div className={styles.dropText}>
-              <strong>Drag & drop profile file (.json) here</strong>
-              <span>or click to browse from disk</span>
+              <strong>{t('settings.dropZoneTitle', 'Drag & drop profile file (.json) here')}</strong>
+              <span>{t('settings.dropZoneDesc', 'or click to browse from disk')}</span>
             </div>
           </div>
 
           {/* Paste Key or JSON */}
           <div className={styles.pasteCard}>
             <label className={styles.label} htmlFor="importText">
-              Or Paste Share Key / JSON
+              {t('settings.pasteLabel', 'Or Paste Share Key / JSON')}
             </label>
             <div className={styles.inputRow}>
               <input
                 id="importText"
                 type="text"
                 className="input"
-                placeholder="pr://eyJhcH... or paste JSON profile"
+                placeholder={t('settings.pastePlaceholder', 'pr://eyJhcH... or paste JSON profile')}
                 value={importText}
-                onChange={e => setImportText(e.target.value)}
-                onKeyDown={e => {
+                onChange={(e) => setImportText(e.target.value)}
+                onKeyDown={(e) => {
                   if (e.key === 'Enter') applyProfileData(importText);
                 }}
               />
@@ -465,7 +586,7 @@ export default function Settings() {
                 onClick={() => applyProfileData(importText)}
               >
                 <FileText size={14} />
-                Load
+                {t('settings.btnLoad', 'Load Profile')}
               </button>
             </div>
           </div>
@@ -473,46 +594,51 @@ export default function Settings() {
 
         <hr className={styles.separator} />
 
-        {/* About & Updates Section */}
+        {/* ── Section 4: About & Updates Section ────────────────────────────── */}
         <div className={styles.aboutSection}>
           <div className={styles.sectionHeader}>
             <Info size={16} />
-            <h2 className={styles.sectionTitle}>О проекте и обновления</h2>
+            <h2 className={styles.sectionTitle}>{t('settings.sectionAbout', 'About & Updates')}</h2>
           </div>
           <p className={styles.subtitle}>
-            Информация о сборке, репозитории и проверка обновлений.
+            {t('settings.aboutDesc', 'Client build details, GitHub repository, and update checker.')}
           </p>
 
           <div className={styles.aboutCard}>
             <div className={styles.aboutGrid}>
               <div className={styles.aboutRow}>
-                <span className={styles.aboutLabel}>Приложение</span>
+                <span className={styles.aboutLabel}>{t('settings.appLabel', 'Application')}</span>
                 <span className={styles.aboutValue}>Proxy Router Desktop</span>
               </div>
               <div className={styles.aboutRow}>
-                <span className={styles.aboutLabel}>Версия клиента</span>
+                <span className={styles.aboutLabel}>{t('settings.versionLabel', 'Client Version')}</span>
                 <div className={styles.versionBadgeGroup}>
-                  <span className="mono" style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 600 }}>
+                  <span
+                    className="mono"
+                    style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 600 }}
+                  >
                     v{CURRENT_VERSION}
                   </span>
                   <span className={styles.tag}>STABLE</span>
                 </div>
               </div>
               <div className={styles.aboutRow}>
-                <span className={styles.aboutLabel}>Платформа</span>
+                <span className={styles.aboutLabel}>{t('settings.platformLabel', 'Platform')}</span>
                 <span className="mono" style={{ color: 'var(--text-sec)', fontSize: 12 }}>
                   Windows x64 • Tauri 2 + Rust
                 </span>
               </div>
               <div className={styles.aboutRow}>
-                <span className={styles.aboutLabel}>Репозиторий</span>
+                <span className={styles.aboutLabel}>{t('settings.repoLabel', 'Repository')}</span>
                 <button
                   type="button"
                   className={styles.linkButton}
                   onClick={() => openExternalLink(GITHUB_REPO_URL)}
-                  title="Открыть репозиторий на GitHub"
+                  title="Open GitHub repository"
                 >
-                  <span className="mono" style={{ fontSize: 12 }}>github.com/{GITHUB_REPO}</span>
+                  <span className="mono" style={{ fontSize: 12 }}>
+                    github.com/{GITHUB_REPO}
+                  </span>
                   <ExternalLink size={12} />
                 </button>
               </div>
@@ -522,10 +648,12 @@ export default function Settings() {
             <div className={styles.updateBlock}>
               <div className={styles.updateHeader}>
                 <div className={styles.updateTitleGroup}>
-                  <span className={styles.cardHeading}>Обновления программы</span>
+                  <span className={styles.cardHeading}>
+                    {t('settings.updatesTitle', 'Software Updates')}
+                  </span>
                   {updateState.checkedAt && (
                     <span className={styles.checkedTime}>
-                      Проверено: {updateState.checkedAt}
+                      {t('settings.lastChecked', 'Checked:')} {updateState.checkedAt}
                     </span>
                   )}
                 </div>
@@ -536,8 +664,13 @@ export default function Settings() {
                   onClick={handleCheckUpdate}
                   disabled={updateState.status === 'checking'}
                 >
-                  <RefreshCw size={13} className={updateState.status === 'checking' ? styles.spin : ''} />
-                  {updateState.status === 'checking' ? 'Проверка...' : 'Проверить обновления'}
+                  <RefreshCw
+                    size={13}
+                    className={updateState.status === 'checking' ? styles.spin : ''}
+                  />
+                  {updateState.status === 'checking'
+                    ? t('settings.btnChecking', 'Checking...')
+                    : t('settings.btnCheckUpdates', 'Check for Updates')}
                 </button>
               </div>
 
@@ -562,7 +695,7 @@ export default function Settings() {
                     onClick={() => openExternalLink(updateState.releaseUrl)}
                   >
                     <Download size={13} />
-                    Скачать обновление
+                    {t('settings.btnDownloadUpdate', 'Download Update')}
                   </button>
                 </div>
               )}
@@ -576,7 +709,7 @@ export default function Settings() {
                     className={styles.errorLink}
                     onClick={() => openExternalLink(GITHUB_RELEASES_URL)}
                   >
-                    Перейти к релизам вручную
+                    {t('settings.manualReleases', 'Open GitHub Releases')}
                   </button>
                 </div>
               )}

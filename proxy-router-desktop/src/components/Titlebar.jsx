@@ -5,11 +5,13 @@
 
 import { Minus, Square, X } from 'lucide-react';
 import { useTauri } from '../hooks/useTauri';
+import { useAppStore } from '../store/useAppStore';
 import logoUrl from '../assets/logo.svg';
 import styles from './Titlebar.module.css';
 
 export default function Titlebar() {
   const { minimizeWindow, toggleMaximizeWindow, closeWindow } = useTauri();
+  const { t } = useAppStore();
 
   return (
     <header className={styles.titlebar} data-tauri-drag-region>
@@ -30,8 +32,8 @@ export default function Titlebar() {
           type="button"
           className={styles.controlBtn}
           onClick={minimizeWindow}
-          aria-label="Minimize"
-          title="Minimize"
+          aria-label={t('titlebar.minimize', 'Minimize to Tray')}
+          title={t('titlebar.minimize', 'Minimize to Tray')}
         >
           <Minus size={13} strokeWidth={1.75} />
         </button>
@@ -40,8 +42,8 @@ export default function Titlebar() {
           type="button"
           className={styles.controlBtn}
           onClick={toggleMaximizeWindow}
-          aria-label="Maximize"
-          title="Maximize"
+          aria-label={t('titlebar.maximize', 'Maximize / Restore')}
+          title={t('titlebar.maximize', 'Maximize / Restore')}
         >
           <Square size={10} strokeWidth={1.75} />
         </button>
@@ -50,8 +52,8 @@ export default function Titlebar() {
           type="button"
           className={`${styles.controlBtn} ${styles.closeBtn}`}
           onClick={closeWindow}
-          aria-label="Close"
-          title="Close"
+          aria-label={t('titlebar.close', 'Close to Tray')}
+          title={t('titlebar.close', 'Close to Tray')}
         >
           <X size={13} strokeWidth={1.75} />
         </button>

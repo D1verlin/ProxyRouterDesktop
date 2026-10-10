@@ -24,6 +24,7 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { RefreshCw, Copy, Check } from 'lucide-react';
+import { useAppStore } from '../store/useAppStore';
 import { drawOfficialBrandLogo } from '../assets/brandLogos.js';
 import { EARTH_DOTS, EARTH_RINGS } from '../assets/earthData.js';
 import styles from './PlanetVisualizer.module.css';
@@ -128,6 +129,7 @@ export default function PlanetVisualizer({
   onRefreshIp,
   onOpenSettings,
 }) {
+  const { t } = useAppStore();
   const canvasRef = useRef(null);
   const [copied, setCopied] = useState(false);
   const isHoveringRef = useRef(false);
@@ -145,7 +147,7 @@ export default function PlanetVisualizer({
     // 1. Origin: User PC in Eastern Europe / Eurasia (55.7°N, 37.6°E)
     const client = {
       id: 'client',
-      name: 'Мой ПК',
+      name: t('planet.myPc', 'My PC'),
       subtext: publicIp || '178.120.53.202',
       lat: toRad(55.7),
       lon: toRad(37.6),
@@ -155,7 +157,7 @@ export default function PlanetVisualizer({
     // 2. Gateway: Squid Proxy Server in Western Europe / Paris (48.8°N, 2.3°E)
     const proxy = {
       id: 'proxy',
-      name: 'Прокси',
+      name: t('planet.proxy', 'Proxy'),
       subtext: 'Squid Relay :3128',
       lat: toRad(48.8),
       lon: toRad(2.3),
@@ -977,38 +979,43 @@ export default function PlanetVisualizer({
           <span className={styles.statusLabel}>
             {isUnconfiguredWarning ? (
               <span className={styles.statusLabelWarning}>
-                Прокси не настроен — укажите данные в настройках
+                {t('planet.unconfigured', 'Proxy unconfigured — set credentials in Settings')}
               </span>
             ) : isConnecting ? (
-              'Авторизация на прокси-сервере...'
+              t('planet.connecting', 'Authorizing with proxy server...')
             ) : isDisconnecting ? (
-              'Отключение прокси-туннеля...'
+              t('planet.disconnecting', 'Disconnecting proxy tunnel...')
             ) : isActive ? (
-              `Прокси включен (маршрутизируется сервисов: ${activeServices.length})`
+              t('planet.activeServices', 'Proxy enabled ({count} services routed)').replace(
+                '{count}',
+                activeServices.length
+              )
             ) : !isConfigured ? (
               <span
                 style={{ cursor: 'pointer', textDecoration: 'underline' }}
                 onClick={onOpenSettings}
-                title="Перейти в настройки для ввода данных прокси"
+                title={t('planet.unconfiguredLink', 'Proxy unconfigured — click to open Settings')}
               >
-                Прокси не настроен — нажмите для перехода в настройки
+                {t('planet.unconfiguredLink', 'Proxy unconfigured — click to open Settings')}
               </span>
             ) : (
-              'Прокси выключен (прямое подключение)'
+              t('planet.inactive', 'Proxy disabled (direct connection)')
             )}
           </span>
         </div>
 
         {/* Clean Standalone Real IPv4 */}
         <div className={styles.ipContainer}>
-          <span className={styles.ipLabel}>Ваш IP:</span>
-          <span className={`mono ${styles.ipValue}`}>{publicIp || 'Определение...'}</span>
+          <span className={styles.ipLabel}>{t('planet.yourIp', 'Your IP:')}</span>
+          <span className={`mono ${styles.ipValue}`}>
+            {publicIp || t('planet.detecting', 'Detecting...')}
+          </span>
 
           <button
             type="button"
             className="btn-icon"
             onClick={onRefreshIp}
-            title="Обновить публичный IP"
+            title={t('planet.refreshIp', 'Refresh public IP')}
             style={{ width: '30px', height: '30px', marginLeft: '6px' }}
           >
             <RefreshCw size={13} />
@@ -1018,7 +1025,7 @@ export default function PlanetVisualizer({
             type="button"
             className="btn-icon"
             onClick={handleCopyIp}
-            title="Скопировать IP в буфер обмена"
+            title={t('planet.copyIp', 'Copy IP to clipboard')}
             style={{ width: '30px', height: '30px' }}
           >
             {copied ? <Check size={13} color="#ffffff" /> : <Copy size={13} />}

@@ -2,7 +2,8 @@
  * useAppStore – lightweight global state via React context + useReducer.
  */
 
-import { createContext, useContext, useReducer } from 'react';
+import { createContext, useContext, useReducer, useCallback } from 'react';
+import { translations } from '../i18n/translations';
 
 // ── Initial State ──────────────────────────────────────────────────────────────
 const initialState = {
@@ -175,6 +176,30 @@ const initialState = {
       enabled: false,
     },
     {
+      id: 'deepl',
+      label: 'DeepL Translator',
+      category: 'Inference',
+      desc: 'DeepL Neural Machine Translation & API',
+      host: 'deepl.com',
+      hosts: [
+        'deepl.com',
+        '*.deepl.com',
+        'www.deepl.com',
+        'api.deepl.com',
+        'api-free.deepl.com',
+        'static.deepl.com',
+        's.deepl.com',
+        'w.deepl.com',
+        'identity.deepl.com',
+        'dict.deepl.com',
+        'linguee.com',
+        '*.linguee.com',
+        'deepl-partners.com',
+        '*.deepl-partners.com',
+      ],
+      enabled: true,
+    },
+    {
       id: 'huggingface',
       label: 'Hugging Face',
       category: 'Inference',
@@ -211,6 +236,12 @@ const initialState = {
     apiUrl:    'http://your-server-ip:1135',
     authToken: '',
   },
+
+  /** Interface language: 'en' (default) | 'ru' */
+  language: 'en',
+
+  /** Windows system autostart (OFF by default) */
+  autostart: false,
 
   /** Activity log entries */
   log: [],
@@ -311,6 +342,12 @@ function reducer(state, action) {
       return { ...state, log: [entry, ...state.log].slice(0, 200) };
     }
 
+    case 'SET_LANGUAGE':
+      return { ...state, language: action.payload };
+
+    case 'SET_AUTOSTART':
+      return { ...state, autostart: action.payload };
+
     case 'CLEAR_LOG':
       return { ...state, log: [] };
 
@@ -324,8 +361,17 @@ const AppContext = createContext(null);
 
 export function AppProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState);
+
+  const t = useCallback(
+    (key, fallback = '') => {
+      const lang = state.language || 'en';
+      return translations[lang]?.[key] ?? translations['en']?.[key] ?? fallback ?? key;
+    },
+    [state.language]
+  );
+
   return (
-    <AppContext.Provider value={{ state, dispatch }}>
+    <AppContext.Provider value={{ state, dispatch, t }}>
       {children}
     </AppContext.Provider>
   );
@@ -335,4 +381,16 @@ export function useAppStore() {
   const ctx = useContext(AppContext);
   if (!ctx) throw new Error('useAppStore must be used within AppProvider');
   return ctx;
+}
+
+export function getEffectiveProxyHost(serverConfig) {
+  try {
+    if (serverConfig?.apiUrl) {
+      const h = new URL(serverConfig.apiUrl).hostname;
+      if (h && h !== 'localhost' && h !== '127.0.0.1' && !h.includes('your-server-ip')) {
+        return h;
+      }
+    }
+  } catch {}
+  return '2.27.25.190';
 }
