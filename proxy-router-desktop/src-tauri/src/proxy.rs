@@ -1,10 +1,11 @@
 // Tauri Rust backend — system proxy, app router, & embedded PAC server
 
-use std::io::{Read, Write};
-use std::net::TcpListener;
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net::{TcpListener, TcpStream};
 use std::process::Command;
 use std::sync::{Arc, RwLock};
 use std::thread;
+use std::time::Duration;
 use tauri::{command, Window};
 
 #[cfg(windows)]
@@ -26,6 +27,9 @@ const REG_PATH: &str =
 
 // Global in-memory PAC content protected by RwLock
 static PAC_CONTENT: RwLock<Option<Arc<String>>> = RwLock::new(None);
+
+// Global upstream proxy target protected by RwLock (host, port)
+static UPSTREAM_PROXY: RwLock<(String, u16)> = RwLock::new((String::new(), 3128));
 
 fn generate_pac_script(proxy_host: &str, proxy_port: u16, hosts: &[String]) -> String {
     let proxy = format!("PROXY {}:{}", proxy_host, proxy_port);
@@ -108,6 +112,9 @@ pub fn start_embedded_pac_server() {
     if let Ok(mut lock) = PAC_CONTENT.write() {
         *lock = Some(Arc::new(default_pac));
     }
+    if let Ok(mut lock) = UPSTREAM_PROXY.write() {
+        *lock = ("2.27.25.190".to_string(), 3128);
+    }
 
     thread::spawn(move || {
         let listener = match TcpListener::bind("127.0.0.1:8182") {
@@ -129,10 +136,17 @@ pub fn start_embedded_pac_server() {
                     let path = parts.next().unwrap_or("");
 
                     if method == "OPTIONS" {
-                        let resp = "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nConnection: close\r\n\r\n";
+                        let resp = "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type, Authorization, *\r\nConnection: close\r\n\r\n";
                         let _ = stream.write_all(resp.as_bytes());
                     } else if path == "/health" {
                         let body = r#"{"ok":true,"server":"embedded-rust"}"#;
+                        let resp = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                            body.len(), body
+                        );
+                        let _ = stream.write_all(resp.as_bytes());
+                    } else if path == "/update" {
+                        let body = r#"{"ok":true,"message":"PAC rules acknowledged"}"#;
                         let resp = format!(
                             "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                             body.len(), body
@@ -165,9 +179,182 @@ pub fn start_embedded_pac_server() {
     });
 }
 
+/// Starts embedded local HTTP CONNECT proxy forwarder on 127.0.0.1:8183
+pub fn start_local_proxy_forwarder() {
+    thread::spawn(|| {
+        let listener = match TcpListener::bind("127.0.0.1:8183") {
+            Ok(l) => l,
+            Err(e) => {
+                eprintln!("[local-forwarder] Could not bind to 127.0.0.1:8183: {}", e);
+                return;
+            }
+        };
+        println!("[local-forwarder] Native Proxy Forwarder listening on http://127.0.0.1:8183");
+
+        for stream in listener.incoming() {
+            if let Ok(mut client) = stream {
+                thread::spawn(move || {
+                    let _ = handle_forwarder_client(&mut client);
+                });
+            }
+        }
+    });
+}
+
+fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
+    client.set_read_timeout(Some(Duration::from_secs(30)))?;
+    client.set_write_timeout(Some(Duration::from_secs(30)))?;
+
+    let mut reader = BufReader::new(client.try_clone()?);
+    let mut request_line = String::new();
+    if reader.read_line(&mut request_line)? == 0 {
+        return Ok(());
+    }
+
+    let (upstream_host, upstream_port) = {
+        let lock = UPSTREAM_PROXY.read().unwrap();
+        lock.clone()
+    };
+
+    if upstream_host.is_empty() {
+        let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\nContent-Type: text/plain\r\n\r\nNo upstream proxy configured\r\n");
+        return Ok(());
+    }
+
+    let parts: Vec<&str> = request_line.split_whitespace().collect();
+    if parts.len() < 2 {
+        return Ok(());
+    }
+    let method = parts[0];
+    let target = parts[1];
+
+    if method.eq_ignore_ascii_case("CONNECT") {
+        // Drain client CONNECT headers
+        loop {
+            let mut line = String::new();
+            if reader.read_line(&mut line)? == 0 || line == "\r\n" || line == "\n" {
+                break;
+            }
+        }
+
+        // Connect to upstream proxy
+        let mut upstream = match TcpStream::connect((upstream_host.as_str(), upstream_port)) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("[local-forwarder] Upstream {}:{} unreachable: {}", upstream_host, upstream_port, e);
+                let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\nContent-Type: text/plain\r\n\r\nUpstream proxy unreachable\r\n");
+                return Ok(());
+            }
+        };
+
+        upstream.set_read_timeout(Some(Duration::from_secs(45)))?;
+        upstream.set_write_timeout(Some(Duration::from_secs(45)))?;
+
+        // Send CONNECT request to upstream proxy
+        let connect_req = format!("CONNECT {} HTTP/1.1\r\nHost: {}\r\nProxy-Connection: Keep-Alive\r\n\r\n", target, target);
+        if let Err(e) = upstream.write_all(connect_req.as_bytes()) {
+            eprintln!("[local-forwarder] Failed writing CONNECT to upstream: {}", e);
+            let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
+            return Ok(());
+        }
+
+        // Read upstream response
+        let mut upstream_reader = BufReader::new(upstream.try_clone()?);
+        let mut resp_line = String::new();
+        if upstream_reader.read_line(&mut resp_line).is_err() {
+            let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
+            return Ok(());
+        }
+
+        if !resp_line.contains("200") {
+            let _ = client.write_all(resp_line.as_bytes());
+            return Ok(());
+        }
+
+        // Drain upstream response headers
+        loop {
+            let mut line = String::new();
+            if upstream_reader.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" || line == "\n" {
+                break;
+            }
+        }
+
+        // Send 200 Connection Established to client
+        client.write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n")?;
+
+        let _ = client.set_read_timeout(None);
+        let _ = client.set_write_timeout(None);
+        let _ = upstream.set_read_timeout(None);
+        let _ = upstream.set_write_timeout(None);
+
+        let mut client_read = client.try_clone()?;
+        let mut client_write = client.try_clone()?;
+        let mut upstream_read = upstream.try_clone()?;
+        let mut upstream_write = upstream;
+
+        let t1 = thread::spawn(move || {
+            let _ = std::io::copy(&mut client_read, &mut upstream_write);
+            let _ = upstream_write.shutdown(std::net::Shutdown::Both);
+        });
+
+        let _ = std::io::copy(&mut upstream_read, &mut client_write);
+        let _ = client_write.shutdown(std::net::Shutdown::Both);
+        let _ = t1.join();
+    } else {
+        // Plain HTTP forwarding
+        let mut upstream = match TcpStream::connect((upstream_host.as_str(), upstream_port)) {
+            Ok(s) => s,
+            Err(_) => {
+                let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
+                return Ok(());
+            }
+        };
+
+        upstream.write_all(request_line.as_bytes())?;
+        loop {
+            let mut line = String::new();
+            if reader.read_line(&mut line)? == 0 {
+                break;
+            }
+            upstream.write_all(line.as_bytes())?;
+            if line == "\r\n" || line == "\n" {
+                break;
+            }
+        }
+
+        let mut client_read = client.try_clone()?;
+        let mut client_write = client.try_clone()?;
+        let mut upstream_read = upstream.try_clone()?;
+        let mut upstream_write = upstream;
+
+        let t1 = thread::spawn(move || {
+            let _ = std::io::copy(&mut client_read, &mut upstream_write);
+        });
+
+        let _ = std::io::copy(&mut upstream_read, &mut client_write);
+        let _ = t1.join();
+    }
+
+    Ok(())
+}
+
+/// Updates upstream proxy target in memory
+#[command]
+pub fn update_upstream_proxy(proxy_host: String, proxy_port: u16) -> Result<String, String> {
+    if let Ok(mut lock) = UPSTREAM_PROXY.write() {
+        *lock = (proxy_host.trim().to_string(), proxy_port);
+        Ok(format!("Upstream proxy set to {}:{}", proxy_host, proxy_port))
+    } else {
+        Err("Failed to acquire write lock for UPSTREAM_PROXY".to_string())
+    }
+}
+
 /// Updates PAC rules in memory from the Tauri UI
 #[command]
 pub fn update_pac_rules(proxy_host: String, proxy_port: u16, hosts: Vec<String>) -> Result<String, String> {
+    if let Ok(mut lock) = UPSTREAM_PROXY.write() {
+        *lock = (proxy_host.trim().to_string(), proxy_port);
+    }
     let script = generate_pac_script(&proxy_host, proxy_port, &hosts);
     if let Ok(mut lock) = PAC_CONTENT.write() {
         *lock = Some(Arc::new(script));
@@ -357,22 +544,93 @@ pub fn kill_process(exe_name: String) -> Result<(), String> {
     Ok(())
 }
 
-/// Launches an application with isolated proxy environment variables
+/// Launches an application with isolated proxy environment variables and smart profiles
 #[command]
 pub fn launch_app_with_proxy(
     exe_path: String,
     args: Option<String>,
-    proxy_url: String,
+    proxy_url: Option<String>,
+    #[allow(non_snake_case)]
+    isolated_profile: Option<bool>,
+    #[allow(non_snake_case)]
+    isolatedProfile: Option<bool>,
 ) -> Result<u32, String> {
     let expanded_path = expand_env_vars(&exe_path);
+    let path_obj = std::path::Path::new(&expanded_path);
+    if !path_obj.exists() {
+        return Err(format!("Executable not found: {}", expanded_path));
+    }
+
+    let eff_proxy_url = proxy_url
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| "http://127.0.0.1:8183".to_string());
+
     let mut cmd = Command::new(&expanded_path);
 
-    cmd.env("HTTP_PROXY", &proxy_url);
-    cmd.env("HTTPS_PROXY", &proxy_url);
-    cmd.env("ALL_PROXY", &proxy_url);
-    cmd.env("http_proxy", &proxy_url);
-    cmd.env("https_proxy", &proxy_url);
-    cmd.env("all_proxy", &proxy_url);
+    // Standard proxy environment variables
+    cmd.env("HTTP_PROXY", &eff_proxy_url);
+    cmd.env("HTTPS_PROXY", &eff_proxy_url);
+    cmd.env("ALL_PROXY", &eff_proxy_url);
+    cmd.env("http_proxy", &eff_proxy_url);
+    cmd.env("https_proxy", &eff_proxy_url);
+    cmd.env("all_proxy", &eff_proxy_url);
+    cmd.env("NO_PROXY", "localhost,127.0.0.1");
+    cmd.env("no_proxy", "localhost,127.0.0.1");
+
+    let lower_path = expanded_path.to_lowercase();
+    let is_chromium_electron = lower_path.contains("chrome")
+        || lower_path.contains("cursor")
+        || lower_path.contains("code")
+        || lower_path.contains("discord")
+        || lower_path.contains("slack")
+        || lower_path.contains("brave")
+        || lower_path.contains("edge")
+        || lower_path.contains("msedge")
+        || lower_path.contains("obsidian")
+        || lower_path.contains("spotify")
+        || lower_path.contains("notion")
+        || lower_path.contains("vivaldi")
+        || lower_path.contains("opera");
+
+    let is_telegram = lower_path.contains("telegram");
+
+    if is_chromium_electron {
+        cmd.arg(format!("--proxy-server={}", eff_proxy_url));
+        cmd.arg("--proxy-bypass-list=<local>;localhost;127.0.0.1");
+
+        let use_profile = isolated_profile.or(isolatedProfile).unwrap_or(true);
+        if use_profile {
+            let app_name = path_obj
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("App");
+            let temp_dir = std::env::temp_dir();
+            let profile_dir = temp_dir.join("ProxyRouter_Profiles").join(app_name);
+            let _ = std::fs::create_dir_all(&profile_dir);
+            cmd.arg(format!("--user-data-dir={}", profile_dir.display()));
+            cmd.arg("--no-first-run");
+            cmd.arg("--no-default-browser-check");
+        }
+    } else if is_telegram {
+        let parsed_port = eff_proxy_url
+            .rsplit(':')
+            .next()
+            .and_then(|p| p.trim_end_matches('/').parse::<u16>().ok())
+            .unwrap_or(8183);
+        let parsed_host = if eff_proxy_url.contains("127.0.0.1") {
+            "127.0.0.1"
+        } else {
+            "127.0.0.1"
+        };
+        cmd.args([
+            "-proxy_server",
+            parsed_host,
+            "-proxy_port",
+            &parsed_port.to_string(),
+            "-proxy_type",
+            "http",
+        ]);
+    }
 
     if let Some(extra_args) = args {
         for arg in extra_args.split_whitespace() {
@@ -380,35 +638,65 @@ pub fn launch_app_with_proxy(
         }
     }
 
-    let lower_path = expanded_path.to_lowercase();
-    if lower_path.contains("chrome")
-        || lower_path.contains("cursor")
-        || lower_path.contains("code")
-        || lower_path.contains("discord")
-        || lower_path.contains("slack")
-    {
-        cmd.arg(format!("--proxy-server={}", proxy_url));
-    }
+    let child = cmd
+        .spawn()
+        .map_err(|e| format!("Could not launch '{}': {}", expanded_path, e))?;
 
-    let child = cmd.spawn().map_err(|e| format!("Could not launch '{}': {}", expanded_path, e))?;
+    Ok(child.id())
+}
+
+/// Launches an interactive PowerShell terminal with proxy environment variables pre-configured
+#[command]
+pub fn launch_proxied_terminal() -> Result<u32, String> {
+    let script = concat!(
+        "$env:HTTP_PROXY='http://127.0.0.1:8183'; ",
+        "$env:HTTPS_PROXY='http://127.0.0.1:8183'; ",
+        "$env:ALL_PROXY='http://127.0.0.1:8183'; ",
+        "$env:http_proxy='http://127.0.0.1:8183'; ",
+        "$env:https_proxy='http://127.0.0.1:8183'; ",
+        "$env:all_proxy='http://127.0.0.1:8183'; ",
+        "$env:NO_PROXY='localhost,127.0.0.1'; ",
+        "Write-Host '=====================================================' -ForegroundColor Cyan; ",
+        "Write-Host '  PROXY ROUTER DESKTOP - Proxied PowerShell Terminal ' -ForegroundColor Green; ",
+        "Write-Host '  HTTP_PROXY  : http://127.0.0.1:8183                ' -ForegroundColor Yellow; ",
+        "Write-Host '  HTTPS_PROXY : http://127.0.0.1:8183                ' -ForegroundColor Yellow; ",
+        "Write-Host '  ALL_PROXY   : http://127.0.0.1:8183                ' -ForegroundColor Yellow; ",
+        "Write-Host '  All CLI requests (curl, git, npm, python) routed!  ' -ForegroundColor White; ",
+        "Write-Host '=====================================================' -ForegroundColor Cyan; "
+    );
+
+    let mut cmd = Command::new("powershell.exe");
+    cmd.args(["-NoExit", "-Command", script]);
+
+    let child = cmd
+        .spawn()
+        .map_err(|e| format!("Could not start PowerShell: {}", e))?;
+
     Ok(child.id())
 }
 
 /// Toggles terminal & CLI developer tools proxy in User Environment
 #[command]
-pub fn set_terminal_env_proxy(proxy_url: String, enabled: bool) -> Result<String, String> {
+pub fn set_terminal_env_proxy(proxy_url: Option<String>, enabled: bool) -> Result<String, String> {
     let env_reg = r"HKCU\Environment";
+    let eff_url = proxy_url
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| "http://127.0.0.1:8183".to_string());
+
     if enabled {
         let _ = hidden_command("reg")
-            .args(["add", env_reg, "/v", "HTTP_PROXY", "/t", "REG_SZ", "/d", &proxy_url, "/f"])
+            .args(["add", env_reg, "/v", "HTTP_PROXY", "/t", "REG_SZ", "/d", &eff_url, "/f"])
             .output();
         let _ = hidden_command("reg")
-            .args(["add", env_reg, "/v", "HTTPS_PROXY", "/t", "REG_SZ", "/d", &proxy_url, "/f"])
+            .args(["add", env_reg, "/v", "HTTPS_PROXY", "/t", "REG_SZ", "/d", &eff_url, "/f"])
             .output();
         let _ = hidden_command("reg")
-            .args(["add", env_reg, "/v", "ALL_PROXY", "/t", "REG_SZ", "/d", &proxy_url, "/f"])
+            .args(["add", env_reg, "/v", "ALL_PROXY", "/t", "REG_SZ", "/d", &eff_url, "/f"])
             .output();
-        Ok(format!("Terminal proxy variables set to {}", proxy_url))
+        let _ = hidden_command("reg")
+            .args(["add", env_reg, "/v", "NO_PROXY", "/t", "REG_SZ", "/d", "localhost,127.0.0.1", "/f"])
+            .output();
+        Ok(format!("Terminal proxy variables set to {}", eff_url))
     } else {
         let _ = hidden_command("reg")
             .args(["delete", env_reg, "/v", "HTTP_PROXY", "/f"])
@@ -418,6 +706,9 @@ pub fn set_terminal_env_proxy(proxy_url: String, enabled: bool) -> Result<String
             .output();
         let _ = hidden_command("reg")
             .args(["delete", env_reg, "/v", "ALL_PROXY", "/f"])
+            .output();
+        let _ = hidden_command("reg")
+            .args(["delete", env_reg, "/v", "NO_PROXY", "/f"])
             .output();
         Ok("Terminal proxy variables removed".to_string())
     }

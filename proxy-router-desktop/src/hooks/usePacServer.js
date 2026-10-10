@@ -61,17 +61,19 @@ export function usePacServer() {
       }
     }
 
-    // 2. Also send HTTP update to local server if running
-    try {
-      await fetch(UPDATE_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(cfg),
-        signal: AbortSignal.timeout(1500),
-      });
-      setIsAlive(true);
-    } catch {
-      // expected if node sidecar isn't running
+    // 2. Send HTTP update to local Node sidecar only if running in browser dev mode
+    if (!isTauri) {
+      try {
+        await fetch(UPDATE_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(cfg),
+          signal: AbortSignal.timeout(1500),
+        });
+        setIsAlive(true);
+      } catch {
+        // expected if node sidecar isn't running
+      }
     }
 
     return PAC_URL;

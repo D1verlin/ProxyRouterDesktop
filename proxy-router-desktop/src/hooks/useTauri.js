@@ -30,7 +30,11 @@ async function invoke(cmd, args = {}) {
       return 'Browser mock: proxy cleared';
     case 'update_pac_rules':
       return 'Browser mock: PAC rules updated';
+    case 'update_upstream_proxy':
+      return 'Browser mock: upstream proxy updated';
     case 'launch_app_with_proxy':
+      return Math.floor(Math.random() * 9000) + 1000;
+    case 'launch_proxied_terminal':
       return Math.floor(Math.random() * 9000) + 1000;
     case 'set_terminal_env_proxy':
       return `Browser mock: terminal proxy ${args.enabled}`;
@@ -118,18 +122,28 @@ export function useTauri() {
     return invoke('kill_process', { exeName });
   }, []);
 
-  const launchAppWithProxy = useCallback(async (exePath, args, proxyUrl) => {
+  const launchAppWithProxy = useCallback(async (exePath, args, proxyUrl, isolatedProfile = true) => {
     return invoke('launch_app_with_proxy', {
       exePath,
       args: args || null,
-      proxyUrl,
+      proxyUrl: proxyUrl || null,
+      isolatedProfile: Boolean(isolatedProfile),
+      isolated_profile: Boolean(isolatedProfile),
     });
+  }, []);
+
+  const launchProxiedTerminal = useCallback(async () => {
+    return invoke('launch_proxied_terminal');
+  }, []);
+
+  const updateUpstreamProxy = useCallback(async (proxyHost, proxyPort) => {
+    return invoke('update_upstream_proxy', { proxyHost, proxyPort });
   }, []);
 
   const setTerminalEnvProxy = useCallback(async (proxyUrl, enabled) => {
     return invoke('set_terminal_env_proxy', {
-      proxyUrl,
-      enabled,
+      proxyUrl: proxyUrl || null,
+      enabled: Boolean(enabled),
     });
   }, []);
 
@@ -151,10 +165,12 @@ export function useTauri() {
     getProxyStatus,
     getNativeIp,
     updatePacRules,
+    updateUpstreamProxy,
     pickExeFile,
     checkRunningProcesses,
     killProcess,
     launchAppWithProxy,
+    launchProxiedTerminal,
     setTerminalEnvProxy,
     minimizeWindow,
     toggleMaximizeWindow,

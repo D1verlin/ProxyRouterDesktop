@@ -431,6 +431,7 @@ export default function PlanetVisualizer({
 
     let pulsePhase = 0;
     let handshakeTimer = 0;
+    let teardownTimer = 0;
     let lastRenderTime = 0;
     const TARGET_FPS_INTERVAL = 1000 / 30; // 30 FPS cap to reduce CPU/GPU load to near zero
 

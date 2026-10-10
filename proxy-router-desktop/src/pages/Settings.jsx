@@ -23,7 +23,7 @@ import {
 import { useAppStore } from '../store/useAppStore';
 import styles from './Settings.module.css';
 
-const CURRENT_VERSION = '1.0.6';
+const CURRENT_VERSION = '1.0.7';
 const GITHUB_REPO = 'D1verlin/ProxyRouterDesktop';
 const GITHUB_REPO_URL = 'https://github.com/D1verlin/ProxyRouterDesktop';
 const GITHUB_RELEASES_URL = 'https://github.com/D1verlin/ProxyRouterDesktop/releases';

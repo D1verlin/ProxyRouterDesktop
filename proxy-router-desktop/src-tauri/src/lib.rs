@@ -4,8 +4,9 @@ mod proxy;
 
 use proxy::{
     check_running_processes, clear_system_proxy, get_proxy_status, get_public_ip,
-    kill_process, launch_app_with_proxy, pick_exe_file, set_system_proxy,
-    set_terminal_env_proxy, start_embedded_pac_server, update_pac_rules,
+    kill_process, launch_app_with_proxy, launch_proxied_terminal, pick_exe_file,
+    set_system_proxy, set_terminal_env_proxy, start_embedded_pac_server,
+    start_local_proxy_forwarder, update_pac_rules, update_upstream_proxy,
     window_close, window_minimize, window_toggle_maximize,
 };
 
@@ -17,6 +18,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             start_embedded_pac_server();
+            start_local_proxy_forwarder();
             if let Some(window) = app.get_webview_window("main") {
                 if let Some(icon) = app.default_window_icon() {
                     let _ = window.set_icon(icon.clone());
@@ -30,10 +32,12 @@ pub fn run() {
             get_proxy_status,
             get_public_ip,
             update_pac_rules,
+            update_upstream_proxy,
             pick_exe_file,
             check_running_processes,
             kill_process,
             launch_app_with_proxy,
+            launch_proxied_terminal,
             set_terminal_env_proxy,
             window_minimize,
             window_toggle_maximize,
