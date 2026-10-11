@@ -36,6 +36,39 @@ static UPSTREAM_PROXY: RwLock<(String, u16)> = RwLock::new((String::new(), 3128)
 // Global proxy master switch state
 pub static PROXY_ACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+// Global in-memory list of routed domains for selective forwarder filtering
+static ROUTED_DOMAINS: RwLock<Vec<String>> = RwLock::new(Vec::new());
+
+pub fn should_proxy_host(target: &str) -> bool {
+    let host = target
+        .trim_start_matches("http://")
+        .trim_start_matches("https://")
+        .split('/')
+        .next()
+        .unwrap_or(target)
+        .split(':')
+        .next()
+        .unwrap_or(target)
+        .trim()
+        .to_lowercase();
+
+    if host.is_empty() || host == "localhost" || host == "127.0.0.1" || !host.contains('.') {
+        return false;
+    }
+
+    if let Ok(domains) = ROUTED_DOMAINS.read() {
+        if domains.is_empty() {
+            return false;
+        }
+        for domain in domains.iter() {
+            if host == *domain || host.ends_with(&format!(".{}", domain)) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 fn generate_pac_script(proxy_host: &str, proxy_port: u16, hosts: &[String]) -> String {
     let proxy = format!("PROXY {}:{}", proxy_host, proxy_port);
     let mut conditions = Vec::new();
@@ -231,6 +264,7 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
     }
     let method = parts[0];
     let target = parts[1];
+    let should_proxy = is_active && should_proxy_host(target);
 
     if method.eq_ignore_ascii_case("CONNECT") {
         // Drain client CONNECT headers
@@ -241,7 +275,7 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
             }
         }
 
-        let target_stream = if is_active {
+        let target_stream = if should_proxy {
             if upstream_host.is_empty() {
                 let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
                 return Ok(());
@@ -282,7 +316,7 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
             }
             upstream
         } else {
-            // Master proxy is disabled: connect DIRECTLY to target without upstream Squid
+            // Master proxy is disabled or host is unrouted: connect DIRECTLY to target without upstream Squid
             match TcpStream::connect(target) {
                 Ok(s) => s,
                 Err(e) => {
@@ -315,7 +349,7 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
         let _ = t1.join();
     } else {
         // Plain HTTP forwarding
-        let mut target_stream = if is_active {
+        let mut target_stream = if should_proxy {
             match TcpStream::connect((upstream_host.as_str(), upstream_port)) {
                 Ok(s) => s,
                 Err(_) => {
@@ -400,6 +434,21 @@ pub fn update_pac_rules(proxy_host: String, proxy_port: u16, hosts: Vec<String>)
     let (eff_host, eff_port) = resolve_effective_proxy_target(&proxy_host, proxy_port);
     if let Ok(mut lock) = UPSTREAM_PROXY.write() {
         *lock = (eff_host.clone(), eff_port);
+    }
+    if let Ok(mut lock) = ROUTED_DOMAINS.write() {
+        let mut cleaned = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for raw in &hosts {
+            let d = raw
+                .trim()
+                .trim_start_matches("*.")
+                .trim_start_matches('.')
+                .to_lowercase();
+            if !d.is_empty() && seen.insert(d.clone()) {
+                cleaned.push(d);
+            }
+        }
+        *lock = cleaned;
     }
     let script = generate_pac_script(&eff_host, eff_port, &hosts);
     if let Ok(mut lock) = PAC_CONTENT.write() {
