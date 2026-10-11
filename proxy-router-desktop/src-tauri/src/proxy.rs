@@ -33,6 +33,9 @@ static PAC_CONTENT: RwLock<Option<Arc<String>>> = RwLock::new(None);
 // Global upstream proxy target protected by RwLock (host, port)
 static UPSTREAM_PROXY: RwLock<(String, u16)> = RwLock::new((String::new(), 3128));
 
+// Global proxy master switch state
+pub static PROXY_ACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 fn generate_pac_script(proxy_host: &str, proxy_port: u16, hosts: &[String]) -> String {
     let proxy = format!("PROXY {}:{}", proxy_host, proxy_port);
     let mut conditions = Vec::new();
@@ -216,15 +219,11 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
         return Ok(());
     }
 
+    let is_active = PROXY_ACTIVE.load(std::sync::atomic::Ordering::Relaxed);
     let (upstream_host, upstream_port) = {
         let lock = UPSTREAM_PROXY.read().unwrap();
         lock.clone()
     };
-
-    if upstream_host.is_empty() {
-        let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\nContent-Type: text/plain\r\n\r\nNo upstream proxy configured\r\n");
-        return Ok(());
-    }
 
     let parts: Vec<&str> = request_line.split_whitespace().collect();
     if parts.len() < 2 {
@@ -242,86 +241,111 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
             }
         }
 
-        // Connect to upstream proxy
-        let mut upstream = match TcpStream::connect((upstream_host.as_str(), upstream_port)) {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("[local-forwarder] Upstream {}:{} unreachable: {}", upstream_host, upstream_port, e);
-                let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\nContent-Type: text/plain\r\n\r\nUpstream proxy unreachable\r\n");
+        let target_stream = if is_active {
+            if upstream_host.is_empty() {
+                let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
                 return Ok(());
+            }
+
+            // Route via upstream Squid proxy on VPS
+            let mut upstream = match TcpStream::connect((upstream_host.as_str(), upstream_port)) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("[local-forwarder] Upstream {}:{} unreachable: {}", upstream_host, upstream_port, e);
+                    let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
+                    return Ok(());
+                }
+            };
+
+            upstream.set_read_timeout(Some(Duration::from_secs(45)))?;
+            upstream.set_write_timeout(Some(Duration::from_secs(45)))?;
+
+            let connect_req = format!("CONNECT {} HTTP/1.1\r\nHost: {}\r\nProxy-Connection: Keep-Alive\r\n\r\n", target, target);
+            if let Err(e) = upstream.write_all(connect_req.as_bytes()) {
+                eprintln!("[local-forwarder] Failed writing CONNECT to upstream: {}", e);
+                let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
+                return Ok(());
+            }
+
+            let mut upstream_reader = BufReader::new(upstream.try_clone()?);
+            let mut resp_line = String::new();
+            if upstream_reader.read_line(&mut resp_line).is_err() || !resp_line.contains("200") {
+                let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
+                return Ok(());
+            }
+
+            loop {
+                let mut line = String::new();
+                if upstream_reader.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" || line == "\n" {
+                    break;
+                }
+            }
+            upstream
+        } else {
+            // Master proxy is disabled: connect DIRECTLY to target without upstream Squid
+            match TcpStream::connect(target) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("[local-forwarder] Direct connection to {} failed: {}", target, e);
+                    let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
+                    return Ok(());
+                }
             }
         };
 
-        upstream.set_read_timeout(Some(Duration::from_secs(45)))?;
-        upstream.set_write_timeout(Some(Duration::from_secs(45)))?;
-
-        // Send CONNECT request to upstream proxy
-        let connect_req = format!("CONNECT {} HTTP/1.1\r\nHost: {}\r\nProxy-Connection: Keep-Alive\r\n\r\n", target, target);
-        if let Err(e) = upstream.write_all(connect_req.as_bytes()) {
-            eprintln!("[local-forwarder] Failed writing CONNECT to upstream: {}", e);
-            let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
-            return Ok(());
-        }
-
-        // Read upstream response
-        let mut upstream_reader = BufReader::new(upstream.try_clone()?);
-        let mut resp_line = String::new();
-        if upstream_reader.read_line(&mut resp_line).is_err() {
-            let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
-            return Ok(());
-        }
-
-        if !resp_line.contains("200") {
-            let _ = client.write_all(resp_line.as_bytes());
-            return Ok(());
-        }
-
-        // Drain upstream response headers
-        loop {
-            let mut line = String::new();
-            if upstream_reader.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" || line == "\n" {
-                break;
-            }
-        }
-
-        // Send 200 Connection Established to client
         client.write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n")?;
 
         let _ = client.set_read_timeout(None);
         let _ = client.set_write_timeout(None);
-        let _ = upstream.set_read_timeout(None);
-        let _ = upstream.set_write_timeout(None);
+        let _ = target_stream.set_read_timeout(None);
+        let _ = target_stream.set_write_timeout(None);
 
         let mut client_read = client.try_clone()?;
         let mut client_write = client.try_clone()?;
-        let mut upstream_read = upstream.try_clone()?;
-        let mut upstream_write = upstream;
+        let mut target_read = target_stream.try_clone()?;
+        let mut target_write = target_stream;
 
         let t1 = thread::spawn(move || {
-            let _ = std::io::copy(&mut client_read, &mut upstream_write);
-            let _ = upstream_write.shutdown(std::net::Shutdown::Both);
+            let _ = std::io::copy(&mut client_read, &mut target_write);
+            let _ = target_write.shutdown(std::net::Shutdown::Both);
         });
 
-        let _ = std::io::copy(&mut upstream_read, &mut client_write);
+        let _ = std::io::copy(&mut target_read, &mut client_write);
         let _ = client_write.shutdown(std::net::Shutdown::Both);
         let _ = t1.join();
     } else {
         // Plain HTTP forwarding
-        let mut upstream = match TcpStream::connect((upstream_host.as_str(), upstream_port)) {
-            Ok(s) => s,
-            Err(_) => {
-                let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
-                return Ok(());
+        let mut target_stream = if is_active {
+            match TcpStream::connect((upstream_host.as_str(), upstream_port)) {
+                Ok(s) => s,
+                Err(_) => {
+                    let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
+                    return Ok(());
+                }
+            }
+        } else {
+            let host_part = target.trim_start_matches("http://").split('/').next().unwrap_or(target);
+            let addr = if host_part.contains(':') {
+                host_part.to_string()
+            } else {
+                format!("{}:80", host_part)
+            };
+            match TcpStream::connect(&addr) {
+                Ok(s) => s,
+                Err(_) => {
+                    let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
+                    return Ok(());
+                }
             }
         };
 
-        upstream.write_all(request_line.as_bytes())?;
+        target_stream.write_all(request_line.as_bytes())?;
         loop {
             let mut line = String::new();
             if reader.read_line(&mut line)? == 0 {
                 break;
             }
-            upstream.write_all(line.as_bytes())?;
+            target_stream.write_all(line.as_bytes())?;
             if line == "\r\n" || line == "\n" {
                 break;
             }
@@ -329,14 +353,14 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
 
         let mut client_read = client.try_clone()?;
         let mut client_write = client.try_clone()?;
-        let mut upstream_read = upstream.try_clone()?;
-        let mut upstream_write = upstream;
+        let mut target_read = target_stream.try_clone()?;
+        let mut target_write = target_stream;
 
         let t1 = thread::spawn(move || {
-            let _ = std::io::copy(&mut client_read, &mut upstream_write);
+            let _ = std::io::copy(&mut client_read, &mut target_write);
         });
 
-        let _ = std::io::copy(&mut upstream_read, &mut client_write);
+        let _ = std::io::copy(&mut target_read, &mut client_write);
         let _ = t1.join();
     }
 
@@ -394,6 +418,7 @@ pub fn set_system_proxy(
     pacUrl: Option<String>,
 ) -> Result<String, String> {
     let url = pac_url.or(pacUrl).unwrap_or_default();
+    PROXY_ACTIVE.store(true, std::sync::atomic::Ordering::SeqCst);
     apply_windows_pac_proxy(&url)?;
     Ok(format!("System proxy set to PAC: {}", url))
 }
@@ -401,7 +426,13 @@ pub fn set_system_proxy(
 /// Clears all system proxy settings — traffic goes direct.
 #[command]
 pub fn clear_system_proxy() -> Result<String, String> {
+    PROXY_ACTIVE.store(false, std::sync::atomic::Ordering::SeqCst);
     apply_windows_pac_proxy("")?;
+    if let Ok(mut lock) = PAC_CONTENT.write() {
+        *lock = Some(Arc::new(
+            "// Proxy Disabled\nfunction FindProxyForURL(url, host) {\n  return 'DIRECT';\n}\n".to_string()
+        ));
+    }
     Ok("System proxy cleared".to_string())
 }
 
@@ -905,12 +936,12 @@ if ($pacUrl) {{
     Set-ItemProperty -Path $connPath -Name 'DefaultConnectionSettings' -Value $blob
     Set-ItemProperty -Path $connPath -Name 'SavedLegacySettings' -Value $blob
 }} else {{
-    Set-ItemProperty -Path $regPath -Name 'AutoConfigURL' -Value ''
+    Remove-ItemProperty -Path $regPath -Name 'AutoConfigURL' -ErrorAction SilentlyContinue
     Set-ItemProperty -Path $regPath -Name 'ProxyEnable' -Value 0
     Set-ItemProperty -Path $regPath -Name 'ProxyServer' -Value ''
 
-    # Flag 0x09 = PROXY_TYPE_AUTO_DETECT (wpad default)
-    $flags = [byte]0x09
+    # Flag 0x01 = PROXY_TYPE_DIRECT (strictly direct, no proxy)
+    $flags = [byte]0x01
     $header = [byte[]](0x46, 0x00, 0x00, 0x00, 0x0B, 0x00, 0x00, 0x00, $flags, 0x00, 0x00, 0x00)
     $proxyServerLen = [BitConverter]::GetBytes([int]0)
     $bypassBytes = [System.Text.Encoding]::ASCII.GetBytes("<-loopback>")

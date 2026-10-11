@@ -257,6 +257,12 @@ export default function Dashboard() {
           payload: { category: 'SYS', level: 'info', msg: 'Windows registry: AutoConfigURL cleared' },
         });
 
+        // Remove IP authorization from Squid whitelist on VPS
+        const currentIp = lastIpRef.current || publicIp;
+        if (currentIp) {
+          await removeIp(currentIp);
+        }
+
         // Keep teardown animation visible for at least 2.2s
         const elapsed = Date.now() - startTime;
         if (elapsed < 2200) {
