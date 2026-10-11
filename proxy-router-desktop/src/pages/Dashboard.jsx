@@ -122,27 +122,6 @@ export default function Dashboard() {
     }
   }, [serverConfig, dispatch]);
 
-  // ── Remove old IP from whitelist ─────────────────────────────────────────────
-  const removeIp = useCallback(async (ip) => {
-    const normalizedUrl = (serverConfig.apiUrl || '').replace(/\/+$/, '');
-    if (!ip || !normalizedUrl || !serverConfig.authToken) return;
-    try {
-      await fetch(`${normalizedUrl}/api/whitelist`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${serverConfig.authToken}`,
-        },
-        body: JSON.stringify({ ip }),
-        signal: AbortSignal.timeout(5000),
-      });
-      dispatch({
-        type: 'ADD_LOG_ENTRY',
-        payload: { category: 'AUTH', level: 'info', msg: `Old IP ${ip} removed from Squid whitelist` },
-      });
-    } catch { /* non-critical */ }
-  }, [serverConfig, dispatch]);
-
   // ── Toggle proxy on/off with Strict Authorization Check & Handshake Lock ────
   const handleToggle = useCallback(async () => {
     // Strictly block concurrent activations / flapping clicks
@@ -236,7 +215,6 @@ export default function Dashboard() {
               type: 'ADD_LOG_ENTRY',
               payload: { category: 'NET', level: 'warn', msg: `Network switch detected: ${prevIp} -> ${newIp}` },
             });
-            await removeIp(prevIp);
             await whitelistIp(newIp);
           }
         }, 5 * 60 * 1000);
@@ -256,12 +234,6 @@ export default function Dashboard() {
           type: 'ADD_LOG_ENTRY',
           payload: { category: 'SYS', level: 'info', msg: 'Windows registry: AutoConfigURL cleared' },
         });
-
-        // Remove IP authorization from Squid whitelist on VPS
-        const currentIp = lastIpRef.current || publicIp;
-        if (currentIp) {
-          await removeIp(currentIp);
-        }
 
         // Keep teardown animation visible for at least 2.2s
         const elapsed = Date.now() - startTime;
@@ -289,7 +261,6 @@ export default function Dashboard() {
     isConfigured,
     fetchIp,
     whitelistIp,
-    removeIp,
     setSystemProxy,
     clearSystemProxy,
     checkHealth,
