@@ -123,6 +123,11 @@ pub fn start_embedded_pac_server() {
     let default_domains = vec![
         "gemini.google.com".to_string(),
         "bard.google.com".to_string(),
+        "notebook.google".to_string(),
+        "notebooklm.google".to_string(),
+        "notebook.google.com".to_string(),
+        "notebooklm.google.com".to_string(),
+        "cloud.google".to_string(),
         "proactivebackend-pa.googleapis.com".to_string(),
         "generativelanguage.googleapis.com".to_string(),
         "alkalimakersuite-pa.clients6.google.com".to_string(),
@@ -152,6 +157,9 @@ pub fn start_embedded_pac_server() {
     let default_pac = generate_pac_script("2.27.25.190", 3128, &default_domains);
     if let Ok(mut lock) = PAC_CONTENT.write() {
         *lock = Some(Arc::new(default_pac));
+    }
+    if let Ok(mut lock) = ROUTED_DOMAINS.write() {
+        *lock = default_domains.clone();
     }
     if let Ok(mut lock) = UPSTREAM_PROXY.write() {
         *lock = ("2.27.25.190".to_string(), 3128);

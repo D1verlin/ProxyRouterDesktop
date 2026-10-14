@@ -182,6 +182,8 @@ export default function PlanetVisualizer({
         cat.includes('google') ||
         id.includes('gemini') ||
         label.includes('gemini') ||
+        id.includes('notebook') ||
+        label.includes('notebook') ||
         id === 'aistudio' ||
         id === 'antigravity' ||
         id === 'stitch'

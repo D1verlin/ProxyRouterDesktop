@@ -28,6 +28,11 @@ let config = {
   enabledHosts:  [
     'gemini.google.com',
     'bard.google.com',
+    'notebook.google',
+    'notebooklm.google',
+    'notebook.google.com',
+    'notebooklm.google.com',
+    'cloud.google',
     'proactivebackend-pa.googleapis.com',
     'generativelanguage.googleapis.com',
     'alkalimakersuite-pa.clients6.google.com',
