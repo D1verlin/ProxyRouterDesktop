@@ -1,7 +1,7 @@
 // Tauri Rust backend — system proxy, app router, & embedded PAC server
 
 use std::io::{BufRead, BufReader, Read, Write};
-use std::net::{TcpListener, TcpStream};
+use std::net::{TcpListener, TcpStream, ToSocketAddrs};
 use std::process::Command;
 use std::sync::{Arc, RwLock};
 use std::thread;
@@ -177,52 +177,59 @@ pub fn start_embedded_pac_server() {
 
         for stream in listener.incoming() {
             if let Ok(mut stream) = stream {
-                let mut buf = [0u8; 1024];
-                if let Ok(bytes_read) = stream.read(&mut buf) {
-                    let req = String::from_utf8_lossy(&buf[..bytes_read]);
-                    let mut parts = req.split_whitespace();
-                    let method = parts.next().unwrap_or("");
-                    let path = parts.next().unwrap_or("");
+                thread::spawn(move || {
+                    let _ = stream.set_read_timeout(Some(Duration::from_secs(3)));
+                    let _ = stream.set_write_timeout(Some(Duration::from_secs(3)));
+                    let mut buf = [0u8; 2048];
+                    if let Ok(bytes_read) = stream.read(&mut buf) {
+                        if bytes_read == 0 {
+                            return;
+                        }
+                        let req = String::from_utf8_lossy(&buf[..bytes_read]);
+                        let mut parts = req.split_whitespace();
+                        let method = parts.next().unwrap_or("");
+                        let path = parts.next().unwrap_or("");
 
-                    if method == "OPTIONS" {
-                        let resp = "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type, Authorization, *\r\nConnection: close\r\n\r\n";
-                        let _ = stream.write_all(resp.as_bytes());
-                    } else if path == "/health" {
-                        let body = r#"{"ok":true,"server":"embedded-rust"}"#;
-                        let resp = format!(
-                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                            body.len(), body
-                        );
-                        let _ = stream.write_all(resp.as_bytes());
-                    } else if path == "/update" {
-                        let body = r#"{"ok":true,"message":"PAC rules acknowledged"}"#;
-                        let resp = format!(
-                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                            body.len(), body
-                        );
-                        let _ = stream.write_all(resp.as_bytes());
-                    } else if path.starts_with("/proxy.pac") || path == "/" {
-                        let pac = {
-                            PAC_CONTENT
-                                .read()
-                                .ok()
-                                .and_then(|r| r.clone())
-                                .unwrap_or_else(|| Arc::new("function FindProxyForURL(url, host) { return 'DIRECT'; }".to_string()))
-                        };
-                        let resp = format!(
-                            "HTTP/1.1 200 OK\r\nContent-Type: application/x-ns-proxy-autoconfig\r\nAccess-Control-Allow-Origin: *\r\nCache-Control: no-cache, no-store, must-revalidate\r\nPragma: no-cache\r\nExpires: 0\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                            pac.len(), *pac
-                        );
-                        let _ = stream.write_all(resp.as_bytes());
-                    } else {
-                        let body = "Not Found";
-                        let resp = format!(
-                            "HTTP/1.1 404 Not Found\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                            body.len(), body
-                        );
-                        let _ = stream.write_all(resp.as_bytes());
+                        if method == "OPTIONS" {
+                            let resp = "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type, Authorization, *\r\nConnection: close\r\n\r\n";
+                            let _ = stream.write_all(resp.as_bytes());
+                        } else if path == "/health" {
+                            let body = r#"{"ok":true,"server":"embedded-rust"}"#;
+                            let resp = format!(
+                                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                                body.len(), body
+                            );
+                            let _ = stream.write_all(resp.as_bytes());
+                        } else if path == "/update" {
+                            let body = r#"{"ok":true,"message":"PAC rules acknowledged"}"#;
+                            let resp = format!(
+                                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                                body.len(), body
+                            );
+                            let _ = stream.write_all(resp.as_bytes());
+                        } else if path.starts_with("/proxy.pac") || path == "/" {
+                            let pac = {
+                                PAC_CONTENT
+                                    .read()
+                                    .ok()
+                                    .and_then(|r| r.clone())
+                                    .unwrap_or_else(|| Arc::new("function FindProxyForURL(url, host) { return 'DIRECT'; }".to_string()))
+                            };
+                            let resp = format!(
+                                "HTTP/1.1 200 OK\r\nContent-Type: application/x-ns-proxy-autoconfig\r\nAccess-Control-Allow-Origin: *\r\nCache-Control: no-cache, no-store, must-revalidate\r\nPragma: no-cache\r\nExpires: 0\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                                pac.len(), *pac
+                            );
+                            let _ = stream.write_all(resp.as_bytes());
+                        } else {
+                            let body = "Not Found";
+                            let resp = format!(
+                                "HTTP/1.1 404 Not Found\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                                body.len(), body
+                            );
+                            let _ = stream.write_all(resp.as_bytes());
+                        }
                     }
-                }
+                });
             }
         }
     });
@@ -290,10 +297,21 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
             }
 
             // Route via upstream Squid proxy on VPS
-            let mut upstream = match TcpStream::connect((upstream_host.as_str(), upstream_port)) {
-                Ok(s) => s,
-                Err(e) => {
-                    eprintln!("[local-forwarder] Upstream {}:{} unreachable: {}", upstream_host, upstream_port, e);
+            let upstream_addr = (upstream_host.as_str(), upstream_port)
+                .to_socket_addrs()
+                .ok()
+                .and_then(|mut iter| iter.next());
+
+            let mut upstream = match upstream_addr {
+                Some(addr) => match TcpStream::connect_timeout(&addr, Duration::from_secs(7)) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        eprintln!("[local-forwarder] Upstream {}:{} unreachable: {}", upstream_host, upstream_port, e);
+                        let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
+                        return Ok(());
+                    }
+                },
+                None => {
                     let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
                     return Ok(());
                 }
@@ -325,11 +343,20 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
             upstream
         } else {
             // Master proxy is disabled or host is unrouted: connect DIRECTLY to target without upstream Squid
-            match TcpStream::connect(target) {
-                Ok(s) => s,
-                Err(e) => {
-                    eprintln!("[local-forwarder] Direct connection to {} failed: {}", target, e);
-                    let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
+            let mut direct_stream = None;
+            if let Ok(addrs) = target.to_socket_addrs() {
+                for addr in addrs {
+                    if let Ok(s) = TcpStream::connect_timeout(&addr, Duration::from_secs(4)) {
+                        direct_stream = Some(s);
+                        break;
+                    }
+                }
+            }
+            match direct_stream {
+                Some(s) => s,
+                None => {
+                    eprintln!("[local-forwarder] Direct connection to {} timed out or failed", target);
+                    let _ = client.write_all(b"HTTP/1.1 504 Gateway Timeout\r\n\r\n");
                     return Ok(());
                 }
             }
@@ -358,9 +385,13 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
     } else {
         // Plain HTTP forwarding
         let mut target_stream = if should_proxy {
-            match TcpStream::connect((upstream_host.as_str(), upstream_port)) {
-                Ok(s) => s,
-                Err(_) => {
+            let upstream_addr = (upstream_host.as_str(), upstream_port)
+                .to_socket_addrs()
+                .ok()
+                .and_then(|mut iter| iter.next());
+            match upstream_addr.and_then(|a| TcpStream::connect_timeout(&a, Duration::from_secs(7)).ok()) {
+                Some(s) => s,
+                None => {
                     let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
                     return Ok(());
                 }
@@ -372,10 +403,19 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
             } else {
                 format!("{}:80", host_part)
             };
-            match TcpStream::connect(&addr) {
-                Ok(s) => s,
-                Err(_) => {
-                    let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
+            let mut direct_stream = None;
+            if let Ok(addrs) = addr.to_socket_addrs() {
+                for a in addrs {
+                    if let Ok(s) = TcpStream::connect_timeout(&a, Duration::from_secs(4)) {
+                        direct_stream = Some(s);
+                        break;
+                    }
+                }
+            }
+            match direct_stream {
+                Some(s) => s,
+                None => {
+                    let _ = client.write_all(b"HTTP/1.1 504 Gateway Timeout\r\n\r\n");
                     return Ok(());
                 }
             }
@@ -400,9 +440,11 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
 
         let t1 = thread::spawn(move || {
             let _ = std::io::copy(&mut client_read, &mut target_write);
+            let _ = target_write.shutdown(std::net::Shutdown::Both);
         });
 
         let _ = std::io::copy(&mut target_read, &mut client_write);
+        let _ = client_write.shutdown(std::net::Shutdown::Both);
         let _ = t1.join();
     }
 
@@ -467,24 +509,26 @@ pub fn update_pac_rules(proxy_host: String, proxy_port: u16, hosts: Vec<String>)
     }
 }
 
-/// Sets the system proxy to a PAC URL (Proxy Auto-Config) updating both root registry and Connections blobs.
+/// Sets the system proxy to local forwarder on 127.0.0.1:8183
 #[command]
 pub fn set_system_proxy(
+    #[allow(unused_variables)]
     pac_url: Option<String>,
+    #[allow(unused_variables)]
     #[allow(non_snake_case)]
     pacUrl: Option<String>,
 ) -> Result<String, String> {
-    let url = pac_url.or(pacUrl).unwrap_or_default();
     PROXY_ACTIVE.store(true, std::sync::atomic::Ordering::SeqCst);
-    apply_windows_pac_proxy(&url)?;
-    Ok(format!("System proxy set to PAC: {}", url))
+    apply_windows_system_proxy(true)?;
+    Ok("System proxy set to 127.0.0.1:8183".to_string())
 }
 
 /// Clears all system proxy settings — traffic goes direct.
 #[command]
 pub fn clear_system_proxy() -> Result<String, String> {
     PROXY_ACTIVE.store(false, std::sync::atomic::Ordering::SeqCst);
-    apply_windows_pac_proxy("")?;
+    apply_windows_system_proxy(false)?;
+    let _ = set_terminal_env_proxy(None, false);
     if let Ok(mut lock) = PAC_CONTENT.write() {
         *lock = Some(Arc::new(
             "// Proxy Disabled\nfunction FindProxyForURL(url, host) {\n  return 'DIRECT';\n}\n".to_string()
@@ -966,49 +1010,55 @@ pub fn window_close(window: Window) -> Result<(), String> {
 
 // ── Registry & WinInet helpers ──────────────────────────────────────────────
 
-fn apply_windows_pac_proxy(pac_url: &str) -> Result<(), String> {
-    let escaped_url = pac_url.replace('"', "\\\"");
+fn apply_windows_system_proxy(enabled: bool) -> Result<(), String> {
     let script = format!(
         r#"
-$pacUrl = "{}"
 $regPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings'
 $connPath = "$regPath\Connections"
 
-if ($pacUrl) {{
-    Set-ItemProperty -Path $regPath -Name 'AutoConfigURL' -Value $pacUrl
-    Set-ItemProperty -Path $regPath -Name 'ProxyEnable' -Value 0
-    Set-ItemProperty -Path $regPath -Name 'ProxyServer' -Value ''
+# Guarantee AutoConfigURL (PAC) is completely eradicated from registry
+Remove-ItemProperty -Path $regPath -Name 'AutoConfigURL' -ErrorAction SilentlyContinue
 
-    # Flag 0x05 = PROXY_TYPE_DIRECT (1) | PROXY_TYPE_AUTO_PROXY_URL (4)
-    $flags = [byte]0x05
-    $header = [byte[]](0x46, 0x00, 0x00, 0x00, 0x0B, 0x00, 0x00, 0x00, $flags, 0x00, 0x00, 0x00)
-    $proxyServerLen = [BitConverter]::GetBytes([int]0)
-    $bypassBytes = [System.Text.Encoding]::ASCII.GetBytes("<-loopback>")
-    $bypassLen = [BitConverter]::GetBytes([int]$bypassBytes.Length)
-    $pacBytes = [System.Text.Encoding]::ASCII.GetBytes($pacUrl)
-    $pacLen = [BitConverter]::GetBytes([int]$pacBytes.Length)
-    $padding = New-Object byte[] 32
-    $blob = $header + $proxyServerLen + $bypassLen + $bypassBytes + $pacLen + $pacBytes + $padding
+if ({}) {{
+    Set-ItemProperty -Path $regPath -Name 'ProxyEnable' -Value 1 -Type DWord
+    Set-ItemProperty -Path $regPath -Name 'ProxyServer' -Value '127.0.0.1:8183' -Type String
+    Set-ItemProperty -Path $regPath -Name 'ProxyOverride' -Value 'localhost;127.0.0.1;<local>' -Type String
 
-    Set-ItemProperty -Path $connPath -Name 'DefaultConnectionSettings' -Value $blob
-    Set-ItemProperty -Path $connPath -Name 'SavedLegacySettings' -Value $blob
-}} else {{
-    Remove-ItemProperty -Path $regPath -Name 'AutoConfigURL' -ErrorAction SilentlyContinue
-    Set-ItemProperty -Path $regPath -Name 'ProxyEnable' -Value 0
-    Set-ItemProperty -Path $regPath -Name 'ProxyServer' -Value ''
-
-    # Flag 0x01 = PROXY_TYPE_DIRECT (strictly direct, no proxy)
-    $flags = [byte]0x01
-    $header = [byte[]](0x46, 0x00, 0x00, 0x00, 0x0B, 0x00, 0x00, 0x00, $flags, 0x00, 0x00, 0x00)
-    $proxyServerLen = [BitConverter]::GetBytes([int]0)
-    $bypassBytes = [System.Text.Encoding]::ASCII.GetBytes("<-loopback>")
+    # Flag 0x03 = PROXY_TYPE_DIRECT (1) | PROXY_TYPE_PROXY_SERVER (2)
+    $flags = [byte]0x03
+    $header = [byte[]](0x46, 0x00, 0x00, 0x00, 0x12, 0x00, 0x00, 0x00, $flags, 0x00, 0x00, 0x00)
+    $proxyBytes = [System.Text.Encoding]::ASCII.GetBytes("127.0.0.1:8183")
+    $proxyLen = [BitConverter]::GetBytes([int]$proxyBytes.Length)
+    $bypassBytes = [System.Text.Encoding]::ASCII.GetBytes("localhost;127.0.0.1;<local>")
     $bypassLen = [BitConverter]::GetBytes([int]$bypassBytes.Length)
     $pacLen = [BitConverter]::GetBytes([int]0)
     $padding = New-Object byte[] 32
-    $blob = $header + $proxyServerLen + $bypassLen + $bypassBytes + $pacLen + $padding
+    $blob = $header + $proxyLen + $proxyBytes + $bypassLen + $bypassBytes + $pacLen + $padding
 
     Set-ItemProperty -Path $connPath -Name 'DefaultConnectionSettings' -Value $blob
     Set-ItemProperty -Path $connPath -Name 'SavedLegacySettings' -Value $blob
+    Get-Item -Path $connPath -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Property | ForEach-Object {{
+        Set-ItemProperty -Path $connPath -Name $_ -Value $blob -ErrorAction SilentlyContinue
+    }}
+}} else {{
+    Set-ItemProperty -Path $regPath -Name 'ProxyEnable' -Value 0 -Type DWord
+    Set-ItemProperty -Path $regPath -Name 'ProxyServer' -Value '' -Type String
+
+    # Flag 0x01 = PROXY_TYPE_DIRECT (strictly direct, no proxy)
+    $flags = [byte]0x01
+    $header = [byte[]](0x46, 0x00, 0x00, 0x00, 0x13, 0x00, 0x00, 0x00, $flags, 0x00, 0x00, 0x00)
+    $proxyLen = [BitConverter]::GetBytes([int]0)
+    $bypassBytes = [System.Text.Encoding]::ASCII.GetBytes("localhost;127.0.0.1;<local>")
+    $bypassLen = [BitConverter]::GetBytes([int]$bypassBytes.Length)
+    $pacLen = [BitConverter]::GetBytes([int]0)
+    $padding = New-Object byte[] 32
+    $blob = $header + $proxyLen + $bypassLen + $bypassBytes + $pacLen + $padding
+
+    Set-ItemProperty -Path $connPath -Name 'DefaultConnectionSettings' -Value $blob
+    Set-ItemProperty -Path $connPath -Name 'SavedLegacySettings' -Value $blob
+    Get-Item -Path $connPath -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Property | ForEach-Object {{
+        Set-ItemProperty -Path $connPath -Name $_ -Value $blob -ErrorAction SilentlyContinue
+    }}
 }}
 
 $wininetCode = @"
@@ -1017,18 +1067,35 @@ using System.Runtime.InteropServices;
 public class WinInetHelper {{
     [DllImport("wininet.dll", SetLastError = true)]
     public static extern bool InternetSetOption(IntPtr hInternet, int dwOption, IntPtr lpBuffer, int dwBufferLength);
+
+    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+    public static extern IntPtr SendMessageTimeout(
+        IntPtr hWnd,
+        uint Msg,
+        UIntPtr wParam,
+        string lParam,
+        uint fuFlags,
+        uint uTimeout,
+        out UIntPtr lpdwResult
+    );
+
     public const int INTERNET_OPTION_SETTINGS_CHANGED = 39;
     public const int INTERNET_OPTION_REFRESH = 37;
+    public const uint WM_SETTINGCHANGE = 0x001A;
+    public const uint SMTO_ABORTIFHUNG = 0x0002;
+
     public static void Refresh() {{
         InternetSetOption(IntPtr.Zero, INTERNET_OPTION_SETTINGS_CHANGED, IntPtr.Zero, 0);
         InternetSetOption(IntPtr.Zero, INTERNET_OPTION_REFRESH, IntPtr.Zero, 0);
+        UIntPtr result;
+        SendMessageTimeout((IntPtr)0xffff, WM_SETTINGCHANGE, UIntPtr.Zero, "Internet Settings", SMTO_ABORTIFHUNG, 1000, out result);
     }}
 }}
 "@
 Add-Type -TypeDefinition $wininetCode -ErrorAction SilentlyContinue
 [WinInetHelper]::Refresh()
 "#,
-        escaped_url
+        if enabled { "$true" } else { "$false" }
     );
 
     let out = hidden_command("powershell")

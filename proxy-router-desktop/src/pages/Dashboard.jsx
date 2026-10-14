@@ -177,24 +177,16 @@ export default function Dashboard() {
         });
 
         // 5. Set Windows system proxy to PAC URL
-        const pacAlive = await checkHealth();
-        if (pacAlive) {
-          try {
-            await setSystemProxy(pacUrl);
-            dispatch({
-              type: 'ADD_LOG_ENTRY',
-              payload: { category: 'SYS', level: 'info', msg: `Windows registry: AutoConfigURL set to ${pacUrl}` },
-            });
-          } catch (err) {
-            dispatch({
-              type: 'ADD_LOG_ENTRY',
-              payload: { category: 'SYS', level: 'warn', msg: `Failed setting Windows proxy: ${err}` },
-            });
-          }
-        } else {
+        try {
+          await setSystemProxy('http://127.0.0.1:8183');
           dispatch({
             type: 'ADD_LOG_ENTRY',
-            payload: { category: 'PAC', level: 'warn', msg: 'Local PAC server not detected on :8182' },
+            payload: { category: 'SYS', level: 'info', msg: 'Windows proxy: 127.0.0.1:8183 activated' },
+          });
+        } catch (err) {
+          dispatch({
+            type: 'ADD_LOG_ENTRY',
+            payload: { category: 'SYS', level: 'warn', msg: `Failed setting Windows proxy: ${err}` },
           });
         }
 
@@ -232,7 +224,7 @@ export default function Dashboard() {
         await clearSystemProxy();
         dispatch({
           type: 'ADD_LOG_ENTRY',
-          payload: { category: 'SYS', level: 'info', msg: 'Windows registry: AutoConfigURL cleared' },
+          payload: { category: 'SYS', level: 'info', msg: 'Windows proxy: deactivated (DIRECT)' },
         });
 
         // Keep teardown animation visible for at least 2.2s

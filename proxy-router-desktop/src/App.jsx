@@ -61,7 +61,7 @@ function TraySync() {
           const nextActive = !state.isActive;
           try {
             if (nextActive) {
-              await setSystemProxy('http://127.0.0.1:8182/proxy.pac');
+              await setSystemProxy('http://127.0.0.1:8183');
             } else {
               await clearSystemProxy();
             }

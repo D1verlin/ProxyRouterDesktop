@@ -2683,7 +2683,7 @@ dependencies = [
 
 [[package]]
 name = "proxy-router-desktop"
-version = "1.0.12"
+version = "1.0.13"
 dependencies = [
  "serde",
  "serde_json",
