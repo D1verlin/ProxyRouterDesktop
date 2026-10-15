@@ -1,11 +1,12 @@
 // Tauri Rust backend — system proxy, app router, & embedded PAC server
 
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
-use std::net::{TcpListener, TcpStream, ToSocketAddrs};
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener, TcpStream, ToSocketAddrs, UdpSocket};
 use std::process::Command;
 use std::sync::{Arc, RwLock};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::{command, AppHandle, Window};
@@ -39,6 +40,151 @@ pub static PROXY_ACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::Atom
 // Global in-memory list of routed domains for selective forwarder filtering
 static ROUTED_DOMAINS: RwLock<Vec<String>> = RwLock::new(Vec::new());
 
+// Fast in-memory DNS cache: target -> (Vec<SocketAddr>, Instant)
+static DNS_CACHE: RwLock<Option<HashMap<String, (Vec<SocketAddr>, Instant)>>> = RwLock::new(None);
+
+/// Queries fast public DNS (77.88.8.8, 1.1.1.1, 8.8.8.8) directly via UDP IPv4.
+/// This completely bypasses buggy Windows IPv6 RDNSS stalls and dead local adapter timeouts.
+fn query_dns_ipv4(host: &str) -> Vec<Ipv4Addr> {
+    let mut ips = Vec::new();
+    if let Ok(ip) = host.parse::<Ipv4Addr>() {
+        ips.push(ip);
+        return ips;
+    }
+
+    let socket = match UdpSocket::bind("0.0.0.0:0") {
+        Ok(s) => s,
+        Err(_) => return ips,
+    };
+    let _ = socket.set_read_timeout(Some(Duration::from_millis(500)));
+    let _ = socket.set_write_timeout(Some(Duration::from_millis(500)));
+
+    let mut packet = Vec::with_capacity(64);
+    packet.extend_from_slice(&[0x1a, 0x2b]); // TXID
+    packet.extend_from_slice(&[0x01, 0x00]); // Standard query, RD=1
+    packet.extend_from_slice(&[0x00, 0x01]); // QDCOUNT=1
+    packet.extend_from_slice(&[0x00, 0x00, 0x00, 0x00, 0x00, 0x00]); // AN, NS, AR = 0
+
+    for part in host.split('.') {
+        if part.is_empty() || part.len() > 63 {
+            return ips;
+        }
+        packet.push(part.len() as u8);
+        packet.extend_from_slice(part.as_bytes());
+    }
+    packet.push(0x00);
+    packet.extend_from_slice(&[0x00, 0x01]); // Type A
+    packet.extend_from_slice(&[0x00, 0x01]); // Class IN
+
+    // 77.88.8.8 is fastest in Russia/CIS; 1.1.1.1 and 8.8.8.8 as fallbacks
+    let servers = ["77.88.8.8:53", "1.1.1.1:53", "8.8.8.8:53"];
+    let mut buf = [0u8; 512];
+    for server in &servers {
+        if socket.send_to(&packet, server).is_ok() {
+            if let Ok((len, _)) = socket.recv_from(&mut buf) {
+                if len >= 12 && buf[0] == 0x1a && buf[1] == 0x2b {
+                    let ancount = u16::from_be_bytes([buf[6], buf[7]]);
+                    if ancount > 0 {
+                        let mut idx = 12;
+                        while idx < len && buf[idx] != 0 {
+                            if (buf[idx] & 0xc0) == 0xc0 {
+                                idx += 2;
+                                break;
+                            } else {
+                                idx += 1 + (buf[idx] as usize);
+                            }
+                        }
+                        if idx < len && buf[idx] == 0 {
+                            idx += 1;
+                        }
+                        idx += 4; // Skip QTYPE and QCLASS
+
+                        for _ in 0..ancount {
+                            if idx >= len {
+                                break;
+                            }
+                            if (buf[idx] & 0xc0) == 0xc0 {
+                                idx += 2;
+                            } else {
+                                while idx < len && buf[idx] != 0 {
+                                    idx += 1 + (buf[idx] as usize);
+                                }
+                                if idx < len {
+                                    idx += 1;
+                                }
+                            }
+                            if idx + 10 > len {
+                                break;
+                            }
+                            let rtype = u16::from_be_bytes([buf[idx], buf[idx + 1]]);
+                            let rdlength = u16::from_be_bytes([buf[idx + 8], buf[idx + 9]]) as usize;
+                            idx += 10;
+                            if rtype == 1 && rdlength == 4 && idx + 4 <= len {
+                                ips.push(Ipv4Addr::new(
+                                    buf[idx],
+                                    buf[idx + 1],
+                                    buf[idx + 2],
+                                    buf[idx + 3],
+                                ));
+                            }
+                            idx += rdlength;
+                        }
+                        if !ips.is_empty() {
+                            return ips;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    ips
+}
+
+/// Resolves target "host:port" with fast memory cache and strict IPv4-first ordering
+fn resolve_target_addresses(target: &str) -> Vec<SocketAddr> {
+    let now = Instant::now();
+    let cache_ttl_secs = 300; // 5 minutes
+
+    if let Ok(guard) = DNS_CACHE.read() {
+        if let Some(ref map) = *guard {
+            if let Some((addrs, ts)) = map.get(target) {
+                if now.duration_since(*ts).as_secs() < cache_ttl_secs {
+                    return addrs.clone();
+                }
+            }
+        }
+    }
+
+    let mut result = Vec::new();
+    let host_part = target.split(':').next().unwrap_or(target);
+    let port: u16 = target.split(':').nth(1).and_then(|p| p.parse().ok()).unwrap_or(80);
+
+    // 1. Try fast pure-UDP DNS first (bypasses Windows IPv6 RDNSS stall)
+    let fast_ips = query_dns_ipv4(host_part);
+    for ip in fast_ips {
+        result.push(SocketAddr::V4(SocketAddrV4::new(ip, port)));
+    }
+
+    // 2. Fallback to OS resolver if pure-UDP didn't find anything
+    if result.is_empty() {
+        if let Ok(iter) = target.to_socket_addrs() {
+            let mut os_addrs: Vec<_> = iter.collect();
+            // Prioritize IPv4
+            os_addrs.sort_by_key(|a| if a.is_ipv4() { 0 } else { 1 });
+            result = os_addrs;
+        }
+    }
+
+    if !result.is_empty() {
+        if let Ok(mut guard) = DNS_CACHE.write() {
+            let map = guard.get_or_insert_with(HashMap::new);
+            map.insert(target.to_string(), (result.clone(), now));
+        }
+    }
+
+    result
+}
+
 pub fn should_proxy_host(target: &str) -> bool {
     let host = target
         .trim_start_matches("http://")
@@ -56,10 +202,32 @@ pub fn should_proxy_host(target: &str) -> bool {
         return false;
     }
 
-    if let Ok(domains) = ROUTED_DOMAINS.read() {
-        if domains.is_empty() {
-            return false;
+    // Core AI and developer ecosystem domains that MUST ALWAYS route through VPS proxy
+    const CORE_AI_DOMAINS: &[&str] = &[
+        "googleapis.com",
+        "google.com",
+        "deepmind.google",
+        "gstatic.com",
+        "googleusercontent.com",
+        "aistudio.google.com",
+        "antigravity.google",
+        "ai.google.dev",
+        "openai.com",
+        "chatgpt.com",
+        "oaistatic.com",
+        "oaiusercontent.com",
+        "anthropic.com",
+        "claude.ai",
+        "claudeusercontent.com",
+    ];
+
+    for domain in CORE_AI_DOMAINS {
+        if host == *domain || host.ends_with(&format!(".{}", domain)) {
+            return true;
         }
+    }
+
+    if let Ok(domains) = ROUTED_DOMAINS.read() {
         for domain in domains.iter() {
             if host == *domain || host.ends_with(&format!(".{}", domain)) {
                 return true;
@@ -297,21 +465,19 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
             }
 
             // Route via upstream Squid proxy on VPS
-            let upstream_addr = (upstream_host.as_str(), upstream_port)
-                .to_socket_addrs()
-                .ok()
-                .and_then(|mut iter| iter.next());
+            let upstream_addrs = resolve_target_addresses(&format!("{}:{}", upstream_host, upstream_port));
+            let mut upstream = None;
+            for addr in upstream_addrs {
+                if let Ok(s) = TcpStream::connect_timeout(&addr, Duration::from_secs(4)) {
+                    upstream = Some(s);
+                    break;
+                }
+            }
 
-            let mut upstream = match upstream_addr {
-                Some(addr) => match TcpStream::connect_timeout(&addr, Duration::from_secs(7)) {
-                    Ok(s) => s,
-                    Err(e) => {
-                        eprintln!("[local-forwarder] Upstream {}:{} unreachable: {}", upstream_host, upstream_port, e);
-                        let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
-                        return Ok(());
-                    }
-                },
+            let mut upstream = match upstream {
+                Some(s) => s,
                 None => {
+                    eprintln!("[local-forwarder] Upstream {}:{} unreachable", upstream_host, upstream_port);
                     let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
                     return Ok(());
                 }
@@ -340,22 +506,28 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
                     break;
                 }
             }
+
+            // Flush any excess bytes that were buffered inside upstream_reader
+            let upstream_leftover = upstream_reader.buffer().to_vec();
+            if !upstream_leftover.is_empty() {
+                let _ = client.write_all(&upstream_leftover);
+            }
+
             upstream
         } else {
-            // Master proxy is disabled or host is unrouted: connect DIRECTLY to target without upstream Squid
+            // Master proxy is disabled or host is unrouted: connect DIRECTLY via fast IPv4-first resolution
+            let addrs = resolve_target_addresses(target);
             let mut direct_stream = None;
-            if let Ok(addrs) = target.to_socket_addrs() {
-                for addr in addrs {
-                    if let Ok(s) = TcpStream::connect_timeout(&addr, Duration::from_secs(4)) {
-                        direct_stream = Some(s);
-                        break;
-                    }
+            for addr in addrs {
+                if let Ok(s) = TcpStream::connect_timeout(&addr, Duration::from_millis(1500)) {
+                    direct_stream = Some(s);
+                    break;
                 }
             }
             match direct_stream {
                 Some(s) => s,
                 None => {
-                    eprintln!("[local-forwarder] Direct connection to {} timed out or failed", target);
+                    eprintln!("[local-forwarder] Direct connection to {} failed", target);
                     let _ = client.write_all(b"HTTP/1.1 504 Gateway Timeout\r\n\r\n");
                     return Ok(());
                 }
@@ -369,6 +541,13 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
         let _ = target_stream.set_read_timeout(None);
         let _ = target_stream.set_write_timeout(None);
 
+        // Send any data that BufReader already read from client socket (e.g. TLS ClientHello)
+        let client_leftover = reader.buffer().to_vec();
+        if !client_leftover.is_empty() {
+            let mut target_clone = target_stream.try_clone()?;
+            let _ = target_clone.write_all(&client_leftover);
+        }
+
         let mut client_read = client.try_clone()?;
         let mut client_write = client.try_clone()?;
         let mut target_read = target_stream.try_clone()?;
@@ -376,20 +555,24 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
 
         let t1 = thread::spawn(move || {
             let _ = std::io::copy(&mut client_read, &mut target_write);
-            let _ = target_write.shutdown(std::net::Shutdown::Both);
+            let _ = target_write.shutdown(std::net::Shutdown::Write);
         });
 
         let _ = std::io::copy(&mut target_read, &mut client_write);
-        let _ = client_write.shutdown(std::net::Shutdown::Both);
+        let _ = client_write.shutdown(std::net::Shutdown::Write);
         let _ = t1.join();
     } else {
         // Plain HTTP forwarding
         let mut target_stream = if should_proxy {
-            let upstream_addr = (upstream_host.as_str(), upstream_port)
-                .to_socket_addrs()
-                .ok()
-                .and_then(|mut iter| iter.next());
-            match upstream_addr.and_then(|a| TcpStream::connect_timeout(&a, Duration::from_secs(7)).ok()) {
+            let upstream_addrs = resolve_target_addresses(&format!("{}:{}", upstream_host, upstream_port));
+            let mut upstream = None;
+            for a in upstream_addrs {
+                if let Ok(s) = TcpStream::connect_timeout(&a, Duration::from_secs(4)) {
+                    upstream = Some(s);
+                    break;
+                }
+            }
+            match upstream {
                 Some(s) => s,
                 None => {
                     let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
@@ -398,18 +581,17 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
             }
         } else {
             let host_part = target.trim_start_matches("http://").split('/').next().unwrap_or(target);
-            let addr = if host_part.contains(':') {
+            let addr_str = if host_part.contains(':') {
                 host_part.to_string()
             } else {
                 format!("{}:80", host_part)
             };
+            let addrs = resolve_target_addresses(&addr_str);
             let mut direct_stream = None;
-            if let Ok(addrs) = addr.to_socket_addrs() {
-                for a in addrs {
-                    if let Ok(s) = TcpStream::connect_timeout(&a, Duration::from_secs(4)) {
-                        direct_stream = Some(s);
-                        break;
-                    }
+            for a in addrs {
+                if let Ok(s) = TcpStream::connect_timeout(&a, Duration::from_millis(1500)) {
+                    direct_stream = Some(s);
+                    break;
                 }
             }
             match direct_stream {
@@ -421,7 +603,27 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
             }
         };
 
-        target_stream.write_all(request_line.as_bytes())?;
+        let formatted_request_line = if should_proxy {
+            request_line
+        } else {
+            let relative_path = if let Some(idx) = target.find("://") {
+                let after_scheme = &target[idx + 3..];
+                if let Some(slash_idx) = after_scheme.find('/') {
+                    &after_scheme[slash_idx..]
+                } else {
+                    "/"
+                }
+            } else if target.starts_with('/') {
+                target
+            } else if let Some(slash_idx) = target.find('/') {
+                &target[slash_idx..]
+            } else {
+                "/"
+            };
+            format!("{} {} {}\r\n", method, relative_path, parts.get(2).unwrap_or(&"HTTP/1.1"))
+        };
+
+        target_stream.write_all(formatted_request_line.as_bytes())?;
         loop {
             let mut line = String::new();
             if reader.read_line(&mut line)? == 0 {
@@ -433,6 +635,11 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
             }
         }
 
+        let client_leftover = reader.buffer().to_vec();
+        if !client_leftover.is_empty() {
+            let _ = target_stream.write_all(&client_leftover);
+        }
+
         let mut client_read = client.try_clone()?;
         let mut client_write = client.try_clone()?;
         let mut target_read = target_stream.try_clone()?;
@@ -440,11 +647,11 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
 
         let t1 = thread::spawn(move || {
             let _ = std::io::copy(&mut client_read, &mut target_write);
-            let _ = target_write.shutdown(std::net::Shutdown::Both);
+            let _ = target_write.shutdown(std::net::Shutdown::Write);
         });
 
         let _ = std::io::copy(&mut target_read, &mut client_write);
-        let _ = client_write.shutdown(std::net::Shutdown::Both);
+        let _ = client_write.shutdown(std::net::Shutdown::Write);
         let _ = t1.join();
     }
 
