@@ -3,12 +3,14 @@
 mod proxy;
 
 use proxy::{
-    app_quit, check_running_processes, clear_system_proxy, get_autostart_status,
-    get_proxy_status, get_public_ip, kill_process, launch_app_with_proxy,
-    launch_proxied_terminal, pick_exe_file, set_autostart, set_system_proxy,
-    set_terminal_env_proxy, start_embedded_pac_server, start_local_proxy_forwarder,
-    update_pac_rules, update_tray_icon, update_upstream_proxy, window_close,
-    window_minimize, window_toggle_maximize, TRAY_INACTIVE_BYTES,
+    app_quit, apply_adapter_dns, check_running_processes, clear_system_proxy,
+    get_autostart_status, get_network_adapters, get_proxy_status, get_public_ip,
+    kill_process, launch_app_with_proxy, launch_proxied_terminal, pick_exe_file,
+    reset_adapter_dns, restore_network_defaults, set_active_dns, set_autostart,
+    set_system_proxy, set_terminal_env_proxy, start_embedded_pac_server,
+    start_local_proxy_forwarder, test_dns_latency, update_pac_rules, update_tray_icon,
+    update_upstream_proxy, window_close, window_minimize, window_toggle_maximize,
+    TRAY_INACTIVE_BYTES,
 };
 
 use tauri::image::Image;
@@ -57,7 +59,7 @@ pub fn run() {
                             let _ = proxy::launch_proxied_terminal();
                         }
                         "quit_app" => {
-                            let _ = proxy::clear_system_proxy();
+                            let _ = proxy::clear_system_proxy_sync();
                             app.exit(0);
                         }
                         _ => {}
@@ -115,6 +117,12 @@ pub fn run() {
             get_autostart_status,
             set_autostart,
             update_tray_icon,
+            get_network_adapters,
+            set_active_dns,
+            apply_adapter_dns,
+            reset_adapter_dns,
+            test_dns_latency,
+            restore_network_defaults,
             app_quit,
             window_minimize,
             window_toggle_maximize,

@@ -1,0 +1,362 @@
+.page {
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  height: 100%;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.titleArea {
+  display: flex;
+  flex-direction: column;
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.subtitle {
+  font-size: 13px;
+  color: var(--text-sec);
+  margin-top: 4px;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sectionTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.sectionSubtitle {
+  font-size: 12px;
+  color: var(--text-sec);
+}
+
+.presetsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
+}
+
+.presetCard {
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 14px;
+  transition: var(--t);
+  box-sizing: border-box;
+}
+
+.presetCard:hover {
+  border-color: var(--border-hover);
+}
+
+.presetCardActive {
+  border-color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.cardTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.presetInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.presetTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.presetName {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.activeBadge {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+  background: #ffffff;
+  color: #000000;
+  font-weight: 600;
+}
+
+.presetDesc {
+  font-size: 12px;
+  color: var(--text-sec);
+  line-height: 1.4;
+}
+
+.latencyBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: var(--r-sm);
+  background: var(--bg-surface-3);
+  border: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.ipsBlock {
+  background: var(--bg-surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ipRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-sec);
+}
+
+.ipVal {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.cardActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.cardActions button {
+  flex: 1;
+}
+
+/* Network Adapter Section */
+.cardBlock {
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.adapterList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.adapterRow {
+  background: var(--bg-surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.adapterMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.adapterNameRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.adapterName {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.adapterIndex {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-sec);
+}
+
+.adapterDesc {
+  font-size: 11px;
+  color: var(--text-sec);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.adapterDnsList {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.adapterActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Custom DNS Form */
+.customForm {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.customField {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.customLabel {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-sec);
+  font-weight: 500;
+}
+
+.customInput {
+  height: 36px;
+  background: var(--bg-surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 0 12px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-primary);
+  outline: none;
+  transition: var(--t);
+  box-sizing: border-box;
+}
+
+.customInput:focus {
+  border-color: #ffffff;
+}
+
+/* Clean Restore Card */
+.restoreCard {
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.restoreInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.restoreTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.restoreDesc {
+  font-size: 12px;
+  color: var(--text-sec);
+  line-height: 1.4;
+  max-width: 680px;
+}
+
+.notice {
+  padding: 10px 14px;
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.success {
+  background: rgba(255, 255, 255, 0.05);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.error {
+  background: rgba(200, 60, 60, 0.08);
+  color: #d47070;
+  border-color: rgba(200, 60, 60, 0.2);
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

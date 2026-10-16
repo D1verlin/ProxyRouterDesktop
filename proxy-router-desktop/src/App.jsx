@@ -12,6 +12,7 @@ import Dashboard from './pages/Dashboard';
 import Sites from './pages/Sites';
 import Apps from './pages/Apps';
 import Whitelist from './pages/Whitelist';
+import DnsSettings from './pages/DnsSettings';
 import { useEffect } from 'react';
 import ActivityLog from './pages/ActivityLog';
 import Settings from './pages/Settings';
@@ -61,7 +62,7 @@ function TraySync() {
           const nextActive = !state.isActive;
           try {
             if (nextActive) {
-              await setSystemProxy('http://127.0.0.1:8183');
+              await setSystemProxy('http://127.0.0.1:8183', state.terminalProxyActive);
             } else {
               await clearSystemProxy();
             }
@@ -84,7 +85,7 @@ function TraySync() {
     return () => {
       if (typeof unlisten === 'function') unlisten();
     };
-  }, [state.isActive, dispatch, setSystemProxy, clearSystemProxy, isTauri]);
+  }, [state.isActive, state.terminalProxyActive, dispatch, setSystemProxy, clearSystemProxy, isTauri]);
 
   return null;
 }
@@ -110,6 +111,7 @@ function MainLayout() {
               <Route path="/sites"     element={<Sites />} />
               <Route path="/apps"      element={<Apps />} />
               <Route path="/whitelist" element={<Whitelist />} />
+              <Route path="/dns"       element={<DnsSettings />} />
               <Route path="/log"       element={<ActivityLog />} />
               <Route path="/settings"  element={<Settings />} />
             </Routes>

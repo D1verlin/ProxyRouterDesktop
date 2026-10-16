@@ -38,6 +38,28 @@ async function invoke(cmd, args = {}) {
       return Math.floor(Math.random() * 9000) + 1000;
     case 'set_terminal_env_proxy':
       return `Browser mock: terminal proxy ${args.enabled}`;
+    case 'get_network_adapters':
+      return [
+        {
+          name: 'Ethernet',
+          index: 1,
+          description: 'Intel(R) Ethernet Connection',
+          status: 'Up',
+          ipv4_dns: ['1.1.1.1', '1.0.0.1'],
+          ipv6_dns: [],
+          is_dhcp: true,
+        },
+      ];
+    case 'set_active_dns':
+      return `Browser mock: active DNS set to ${args.providerId || args.provider_id}`;
+    case 'apply_adapter_dns':
+      return `Browser mock: applied DNS to adapter ${args.adapterIndex || args.adapter_index}`;
+    case 'reset_adapter_dns':
+      return `Browser mock: reset adapter ${args.adapterIndex || args.adapter_index}`;
+    case 'test_dns_latency':
+      return (args.servers || []).map(s => ({ server: s, latency_ms: Math.floor(Math.random() * 25) + 8, error: null }));
+    case 'restore_network_defaults':
+      return 'Browser mock: network defaults restored';
     case 'pick_exe_file':
       return null;
     case 'check_running_processes':
@@ -62,8 +84,13 @@ async function invoke(cmd, args = {}) {
 }
 
 export function useTauri() {
-  const setSystemProxy = useCallback(async (pacUrl) => {
-    return invoke('set_system_proxy', { pacUrl, pac_url: pacUrl });
+  const setSystemProxy = useCallback(async (pacUrl, setEnv = true) => {
+    return invoke('set_system_proxy', {
+      pacUrl,
+      pac_url: pacUrl,
+      setEnv,
+      set_env: setEnv,
+    });
   }, []);
 
   const clearSystemProxy = useCallback(async () => {
@@ -183,6 +210,47 @@ export function useTauri() {
     return invoke('window_close');
   }, []);
 
+  const getNetworkAdapters = useCallback(async () => {
+    return invoke('get_network_adapters');
+  }, []);
+
+  const setActiveDns = useCallback(async (providerId, serversV4, serversV6 = []) => {
+    return invoke('set_active_dns', {
+      providerId,
+      provider_id: providerId,
+      serversV4: serversV4 || [],
+      servers_v4: serversV4 || [],
+      serversV6: serversV6 || [],
+      servers_v6: serversV6 || [],
+    });
+  }, []);
+
+  const applyAdapterDns = useCallback(async (adapterIndex, serversV4, serversV6 = []) => {
+    return invoke('apply_adapter_dns', {
+      adapterIndex: Number(adapterIndex),
+      adapter_index: Number(adapterIndex),
+      serversV4: serversV4 || [],
+      servers_v4: serversV4 || [],
+      serversV6: serversV6 || [],
+      servers_v6: serversV6 || [],
+    });
+  }, []);
+
+  const resetAdapterDns = useCallback(async (adapterIndex) => {
+    return invoke('reset_adapter_dns', {
+      adapterIndex: Number(adapterIndex),
+      adapter_index: Number(adapterIndex),
+    });
+  }, []);
+
+  const testDnsLatency = useCallback(async (servers) => {
+    return invoke('test_dns_latency', { servers });
+  }, []);
+
+  const restoreNetworkDefaults = useCallback(async () => {
+    return invoke('restore_network_defaults');
+  }, []);
+
   return {
     setSystemProxy,
     clearSystemProxy,
@@ -203,6 +271,12 @@ export function useTauri() {
     minimizeWindow,
     toggleMaximizeWindow,
     closeWindow,
+    getNetworkAdapters,
+    setActiveDns,
+    applyAdapterDns,
+    resetAdapterDns,
+    testDnsLatency,
+    restoreNetworkDefaults,
     isTauri,
   };
 }

@@ -22,6 +22,7 @@ export default function Dashboard() {
     serverConfig,
     presetSites,
     customDomains,
+    terminalProxyActive,
   } = state;
 
   const { setSystemProxy, clearSystemProxy, getNativeIp } = useTauri();
@@ -178,7 +179,7 @@ export default function Dashboard() {
 
         // 5. Set Windows system proxy to PAC URL
         try {
-          await setSystemProxy('http://127.0.0.1:8183');
+          await setSystemProxy('http://127.0.0.1:8183', terminalProxyActive);
           dispatch({
             type: 'ADD_LOG_ENTRY',
             payload: { category: 'SYS', level: 'info', msg: 'Windows proxy: 127.0.0.1:8183 activated' },

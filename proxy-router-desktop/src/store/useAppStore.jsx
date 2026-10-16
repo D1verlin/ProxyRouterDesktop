@@ -267,7 +267,7 @@ const initialState = {
   autoRouteDetected: false,
 
   /** Terminal & Dev tools proxy status */
-  terminalProxyActive: false,
+  terminalProxyActive: true,
 
   /** Server configuration */
   serverConfig: {

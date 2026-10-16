@@ -27,7 +27,7 @@ import { useAppStore } from '../store/useAppStore';
 import { useTauri } from '../hooks/useTauri';
 import styles from './Settings.module.css';
 
-const CURRENT_VERSION = '1.0.12';
+const CURRENT_VERSION = '1.0.16';
 const GITHUB_REPO = 'D1verlin/ProxyRouterDesktop';
 const GITHUB_REPO_URL = 'https://github.com/D1verlin/ProxyRouterDesktop';
 const GITHUB_RELEASES_URL = 'https://github.com/D1verlin/ProxyRouterDesktop/releases';
@@ -55,8 +55,8 @@ const openExternalLink = async (url) => {
 
 export default function Settings() {
   const { state, dispatch, t } = useAppStore();
-  const { serverConfig, language, autostart } = state;
-  const { getAutostartStatus, setAutostart } = useTauri();
+  const { serverConfig, language, autostart, terminalProxyActive, isActive } = state;
+  const { getAutostartStatus, setAutostart, setTerminalEnvProxy } = useTauri();
 
   const [form, setForm] = useState({ ...serverConfig });
   const [showToken, setShowToken] = useState(false);
@@ -114,6 +114,46 @@ export default function Settings() {
       setNotice({
         type: 'error',
         text: `Failed to configure autostart: ${err}`,
+      });
+    }
+  };
+
+  const handleToggleEnvProxy = async () => {
+    const nextVal = !terminalProxyActive;
+    try {
+      if (isActive) {
+        if (nextVal) {
+          await setTerminalEnvProxy('http://127.0.0.1:8183', true);
+        } else {
+          await setTerminalEnvProxy(null, false);
+        }
+      }
+      dispatch({ type: 'SET_TERMINAL_PROXY', payload: nextVal });
+      dispatch({
+        type: 'ADD_LOG_ENTRY',
+        payload: {
+          category: 'SYS',
+          level: 'info',
+          msg: nextVal
+            ? 'Windows environment variables enabled (HTTP_PROXY / HTTPS_PROXY)'
+            : 'Windows environment variables disabled and cleared',
+        },
+      });
+      setNotice({
+        type: 'success',
+        text: nextVal
+          ? (language === 'ru'
+              ? 'Глобальные переменные среды активированы (HTTP_PROXY, HTTPS_PROXY)'
+              : 'Global environment variables enabled (HTTP_PROXY, HTTPS_PROXY)')
+          : (language === 'ru'
+              ? 'Глобальные переменные среды отключены и очищены'
+              : 'Global environment variables disabled and cleared'),
+      });
+      setTimeout(() => setNotice(null), 3000);
+    } catch (err) {
+      setNotice({
+        type: 'error',
+        text: `Failed to configure environment variables: ${err}`,
       });
     }
   };
@@ -212,7 +252,7 @@ export default function Settings() {
 
     return {
       app: 'ProxyRouter',
-      version: '1.0.12',
+      version: '1.0.16',
       apiUrl: form.apiUrl,
       authToken: form.authToken,
       proxyHost: host,
@@ -405,6 +445,27 @@ export default function Settings() {
               type="checkbox"
               checked={Boolean(autostart)}
               onChange={handleToggleAutostart}
+            />
+            <span className={styles.slider} />
+          </label>
+        </div>
+
+        {/* Windows Environment Variables Toggle */}
+        <div className={styles.toggleCard}>
+          <div className={styles.toggleInfo}>
+            <span className={styles.toggleTitle}>{t('settings.envProxyLabel', 'Global Environment Variables (HTTP_PROXY / HTTPS_PROXY)')}</span>
+            <span className={styles.toggleDesc}>
+              {t(
+                'settings.envProxyDesc',
+                'Set HTTP_PROXY, HTTPS_PROXY, and ALL_PROXY in Windows user environment when proxy is active (for CLI, Git, Python, Curl).'
+              )}
+            </span>
+          </div>
+          <label className={styles.switch}>
+            <input
+              type="checkbox"
+              checked={Boolean(terminalProxyActive)}
+              onChange={handleToggleEnvProxy}
             />
             <span className={styles.slider} />
           </label>

@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener, TcpStream, ToSocketAddrs, UdpSocket};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener, TcpStream, ToSocketAddrs, UdpSocket};
 use std::process::Command;
 use std::sync::{Arc, RwLock};
 use std::thread;
@@ -43,7 +43,25 @@ static ROUTED_DOMAINS: RwLock<Vec<String>> = RwLock::new(Vec::new());
 // Fast in-memory DNS cache: target -> (Vec<SocketAddr>, Instant)
 static DNS_CACHE: RwLock<Option<HashMap<String, (Vec<SocketAddr>, Instant)>>> = RwLock::new(None);
 
-/// Queries fast public DNS (77.88.8.8, 1.1.1.1, 8.8.8.8) directly via UDP IPv4.
+// Configurable fast public DNS servers (NO Yandex!).
+// Defaults to Cloudflare (1.1.1.1, 1.0.0.1), Google (8.8.8.8), and Quad9 (9.9.9.9)
+static ACTIVE_DNS_SERVERS: RwLock<Vec<String>> = RwLock::new(Vec::new());
+
+pub fn get_configured_dns_servers() -> Vec<String> {
+    if let Ok(guard) = ACTIVE_DNS_SERVERS.read() {
+        if !guard.is_empty() {
+            return guard.clone();
+        }
+    }
+    vec![
+        "1.1.1.1:53".to_string(),
+        "1.0.0.1:53".to_string(),
+        "8.8.8.8:53".to_string(),
+        "9.9.9.9:53".to_string(),
+    ]
+}
+
+/// Queries fast public DNS directly via UDP IPv4.
 /// This completely bypasses buggy Windows IPv6 RDNSS stalls and dead local adapter timeouts.
 fn query_dns_ipv4(host: &str) -> Vec<Ipv4Addr> {
     let mut ips = Vec::new();
@@ -76,8 +94,7 @@ fn query_dns_ipv4(host: &str) -> Vec<Ipv4Addr> {
     packet.extend_from_slice(&[0x00, 0x01]); // Type A
     packet.extend_from_slice(&[0x00, 0x01]); // Class IN
 
-    // 77.88.8.8 is fastest in Russia/CIS; 1.1.1.1 and 8.8.8.8 as fallbacks
-    let servers = ["77.88.8.8:53", "1.1.1.1:53", "8.8.8.8:53"];
+    let servers = get_configured_dns_servers();
     let mut buf = [0u8; 512];
     for server in &servers {
         if socket.send_to(&packet, server).is_ok() {
@@ -159,6 +176,11 @@ fn resolve_target_addresses(target: &str) -> Vec<SocketAddr> {
     let host_part = target.split(':').next().unwrap_or(target);
     let port: u16 = target.split(':').nth(1).and_then(|p| p.parse().ok()).unwrap_or(80);
 
+    // 0. If host_part is already an IP address, resolve instantly with 0 latency
+    if let Ok(ip) = host_part.parse::<IpAddr>() {
+        return vec![SocketAddr::new(ip, port)];
+    }
+
     // 1. Try fast pure-UDP DNS first (bypasses Windows IPv6 RDNSS stall)
     let fast_ips = query_dns_ipv4(host_part);
     for ip in fast_ips {
@@ -199,6 +221,17 @@ pub fn should_proxy_host(target: &str) -> bool {
         .to_lowercase();
 
     if host.is_empty() || host == "localhost" || host == "127.0.0.1" || !host.contains('.') {
+        return false;
+    }
+
+    // NEVER proxy local network or Apple authentication / services (critical for AltServer & AltStore)
+    if host.ends_with(".apple.com") || host == "apple.com"
+        || host.ends_with(".icloud.com") || host == "icloud.com"
+        || host.ends_with(".mzstatic.com") || host.ends_with(".aaplimg.com")
+        || host.ends_with(".apple-cloudkit.com") || host.ends_with(".crashlytics.com")
+        || host.starts_with("192.168.") || host.starts_with("10.") || host.starts_with("172.")
+        || host.ends_with(".local")
+    {
         return false;
     }
 
@@ -519,7 +552,7 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
             let addrs = resolve_target_addresses(target);
             let mut direct_stream = None;
             for addr in addrs {
-                if let Ok(s) = TcpStream::connect_timeout(&addr, Duration::from_millis(1500)) {
+                if let Ok(s) = TcpStream::connect_timeout(&addr, Duration::from_secs(8)) {
                     direct_stream = Some(s);
                     break;
                 }
@@ -589,7 +622,7 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
             let addrs = resolve_target_addresses(&addr_str);
             let mut direct_stream = None;
             for a in addrs {
-                if let Ok(s) = TcpStream::connect_timeout(&a, Duration::from_millis(1500)) {
+                if let Ok(s) = TcpStream::connect_timeout(&a, Duration::from_secs(8)) {
                     direct_stream = Some(s);
                     break;
                 }
@@ -716,45 +749,78 @@ pub fn update_pac_rules(proxy_host: String, proxy_port: u16, hosts: Vec<String>)
     }
 }
 
-/// Sets the system proxy to local forwarder on 127.0.0.1:8183
+/// Sets the system proxy to local forwarder on 127.0.0.1:8183 and optionally sets HTTP_PROXY / HTTPS_PROXY
 #[command]
-pub fn set_system_proxy(
+pub async fn set_system_proxy(
     #[allow(unused_variables)]
     pac_url: Option<String>,
     #[allow(unused_variables)]
     #[allow(non_snake_case)]
     pacUrl: Option<String>,
+    set_env: Option<bool>,
+    #[allow(non_snake_case)]
+    setEnv: Option<bool>,
 ) -> Result<String, String> {
-    PROXY_ACTIVE.store(true, std::sync::atomic::Ordering::SeqCst);
-    apply_windows_system_proxy(true)?;
-    Ok("System proxy set to 127.0.0.1:8183".to_string())
+    let should_set_env = set_env.or(setEnv).unwrap_or(true);
+    tauri::async_runtime::spawn_blocking(move || {
+        PROXY_ACTIVE.store(true, std::sync::atomic::Ordering::SeqCst);
+        apply_windows_system_proxy(true)?;
+        if should_set_env {
+            let _ = set_terminal_env_proxy_internal(Some("http://127.0.0.1:8183".to_string()), true);
+        } else {
+            let _ = set_terminal_env_proxy_internal(None, false);
+        }
+        Ok("System proxy set to 127.0.0.1:8183".to_string())
+    })
+    .await
+    .map_err(|e| format!("Task execution error: {}", e))?
 }
 
-/// Clears all system proxy settings — traffic goes direct.
-#[command]
-pub fn clear_system_proxy() -> Result<String, String> {
+/// Synchronous internal version of clear_system_proxy
+pub fn clear_system_proxy_sync() -> Result<String, String> {
     PROXY_ACTIVE.store(false, std::sync::atomic::Ordering::SeqCst);
     apply_windows_system_proxy(false)?;
-    let _ = set_terminal_env_proxy(None, false);
+    let _ = set_terminal_env_proxy_internal(None, false);
     if let Ok(mut lock) = PAC_CONTENT.write() {
         *lock = Some(Arc::new(
             "// Proxy Disabled\nfunction FindProxyForURL(url, host) {\n  return 'DIRECT';\n}\n".to_string()
         ));
     }
-    Ok("System proxy cleared".to_string())
+    // Clear DNS memory cache and flush Windows DNS cache
+    if let Ok(mut cache) = DNS_CACHE.write() {
+        *cache = None;
+    }
+    let _ = hidden_command("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", "Clear-DnsClientCache"])
+        .output();
+    Ok("System proxy cleared and environment variables removed".to_string())
+}
+
+/// Clears all system proxy settings, removes HTTP_PROXY env vars, flushes DNS cache.
+#[command]
+pub async fn clear_system_proxy() -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        clear_system_proxy_sync()
+    })
+    .await
+    .map_err(|e| format!("Task execution error: {}", e))?
 }
 
 /// Returns the current Windows proxy settings from the registry.
 #[command]
 pub fn get_proxy_status() -> Result<serde_json::Value, String> {
-    let pac_url    = reg_get("AutoConfigURL").unwrap_or_default();
-    let proxy_en   = reg_get("ProxyEnable").unwrap_or_default();
-    let proxy_srv  = reg_get("ProxyServer").unwrap_or_default();
+    let pac_url     = reg_get("AutoConfigURL").unwrap_or_default();
+    let proxy_en    = reg_get("ProxyEnable").unwrap_or_default();
+    let proxy_srv   = reg_get("ProxyServer").unwrap_or_default();
+    let http_proxy  = reg_get_key(r"HKCU\Environment", "HTTP_PROXY").unwrap_or_default();
+    let https_proxy = reg_get_key(r"HKCU\Environment", "HTTPS_PROXY").unwrap_or_default();
 
     Ok(serde_json::json!({
         "pac_url":      pac_url,
         "proxy_enable": proxy_en,
         "proxy_server": proxy_srv,
+        "http_proxy":   http_proxy,
+        "https_proxy":  https_proxy,
     }))
 }
 
@@ -766,38 +832,91 @@ fn is_valid_ipv4(ip: &str) -> bool {
     parts.iter().all(|p| p.parse::<u8>().is_ok())
 }
 
-/// Robust multi-endpoint WAN IPv4 discovery
-/// Robust multi-endpoint WAN IPv4 discovery — bypasses any active proxy or environment variables
+/// Direct plain-HTTP socket fetch for public IP (takes ~60-120ms, no child process, no TLS)
+fn fetch_raw_http_ip(host: &str, path: &str) -> Option<String> {
+    let target = format!("{}:80", host);
+    let addrs: Vec<SocketAddr> = target.to_socket_addrs().ok()?.collect();
+    let addr = addrs.into_iter().find(|a| a.is_ipv4())?;
+
+    let mut stream = TcpStream::connect_timeout(&addr, Duration::from_millis(800)).ok()?;
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(1000)));
+    let _ = stream.set_write_timeout(Some(Duration::from_millis(800)));
+
+    let req = format!("GET {} HTTP/1.1\r\nHost: {}\r\nUser-Agent: curl/8.0\r\nConnection: close\r\n\r\n", path, host);
+    stream.write_all(req.as_bytes()).ok()?;
+
+    let mut reader = BufReader::new(stream);
+    let mut header = true;
+    let mut body = String::new();
+    let mut line = String::new();
+    while reader.read_line(&mut line).unwrap_or(0) > 0 {
+        if header {
+            if line == "\r\n" || line == "\n" {
+                header = false;
+            }
+        } else {
+            body.push_str(&line);
+        }
+        line.clear();
+    }
+
+    let trimmed = body.trim();
+    if is_valid_ipv4(trimmed) {
+        Some(trimmed.to_string())
+    } else {
+        None
+    }
+}
+
+/// Robust, non-blocking multi-endpoint WAN IPv4 discovery
 #[command]
-pub fn get_public_ip() -> Result<String, String> {
-    let endpoints = [
-        "https://api4.ipify.org",
-        "https://ipv4.icanhazip.com",
-        "https://v4.ident.me",
-        "https://ifconfig.me/ip",
-    ];
+pub async fn get_public_ip() -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        // 1. Fast direct HTTP on port 80 (completes in ~60-150ms, bypasses TLS and proxy)
+        let endpoints = [
+            ("api4.ipify.org", "/"),
+            ("checkip.amazonaws.com", "/"),
+            ("ipv4.icanhazip.com", "/"),
+            ("ifconfig.me", "/ip"),
+        ];
 
-    for endpoint in endpoints {
-        let mut cmd = hidden_command("curl.exe");
-        cmd.args(["--silent", "--connect-timeout", "2", "--max-time", "3", "--noproxy", "*", endpoint]);
-        cmd.env_remove("HTTP_PROXY")
-           .env_remove("HTTPS_PROXY")
-           .env_remove("ALL_PROXY")
-           .env_remove("http_proxy")
-           .env_remove("https_proxy")
-           .env_remove("all_proxy");
+        for (host, path) in endpoints {
+            if let Some(ip) = fetch_raw_http_ip(host, path) {
+                return Ok(ip);
+            }
+        }
 
-        if let Ok(out) = cmd.output() {
-            if out.status.success() {
-                let candidate = String::from_utf8_lossy(&out.stdout).trim().to_string();
-                if is_valid_ipv4(&candidate) {
-                    return Ok(candidate);
+        // 2. Fallback to curl with short timeout
+        let curl_targets = [
+            "http://api4.ipify.org",
+            "http://checkip.amazonaws.com",
+            "https://ipv4.icanhazip.com",
+        ];
+
+        for url in curl_targets {
+            let mut cmd = hidden_command("curl.exe");
+            cmd.args(["--silent", "--connect-timeout", "1", "--max-time", "2", "--noproxy", "*", url]);
+            cmd.env_remove("HTTP_PROXY")
+               .env_remove("HTTPS_PROXY")
+               .env_remove("ALL_PROXY")
+               .env_remove("http_proxy")
+               .env_remove("https_proxy")
+               .env_remove("all_proxy");
+
+            if let Ok(out) = cmd.output() {
+                if out.status.success() {
+                    let candidate = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                    if is_valid_ipv4(&candidate) {
+                        return Ok(candidate);
+                    }
                 }
             }
         }
-    }
 
-    Err("Could not retrieve external public IPv4 address".to_string())
+        Err("Could not retrieve external public IPv4 address".to_string())
+    })
+    .await
+    .map_err(|e| format!("Task execution error: {}", e))?
 }
 
 // ── Application (.exe) Routing & Process Management ───────────────────────────
@@ -821,8 +940,9 @@ fn expand_env_vars(raw: &str) -> String {
 
 /// Opens native Windows Explorer OpenFileDialog to select an .exe file
 #[command]
-pub fn pick_exe_file() -> Result<Option<String>, String> {
-    let script = r#"
+pub async fn pick_exe_file() -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let script = r#"
 Add-Type -AssemblyName System.Windows.Forms
 $dialog = New-Object System.Windows.Forms.OpenFileDialog
 $dialog.Filter = "Executable Files (*.exe)|*.exe|All Files (*.*)|*.*"
@@ -832,17 +952,20 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
 }
 "#;
 
-    let out = hidden_command("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", script])
-        .output()
-        .map_err(|e| format!("Failed to open file dialog: {}", e))?;
+        let out = hidden_command("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", script])
+            .output()
+            .map_err(|e| format!("Failed to open file dialog: {}", e))?;
 
-    let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    if path.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(path))
-    }
+        let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if path.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(path))
+        }
+    })
+    .await
+    .map_err(|e| format!("Task execution error: {}", e))?
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
@@ -854,34 +977,38 @@ pub struct ProcessStatus {
 
 /// Checks whether specified executables are currently running in Windows
 #[command]
-pub fn check_running_processes(names: Vec<String>) -> Result<Vec<ProcessStatus>, String> {
-    let out = hidden_command("tasklist")
-        .args(["/FO", "CSV", "/NH"])
-        .output()
-        .map_err(|e| format!("tasklist execution failed: {}", e))?;
+pub async fn check_running_processes(names: Vec<String>) -> Result<Vec<ProcessStatus>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let out = hidden_command("tasklist")
+            .args(["/FO", "CSV", "/NH"])
+            .output()
+            .map_err(|e| format!("tasklist execution failed: {}", e))?;
 
-    let stdout = String::from_utf8_lossy(&out.stdout).to_lowercase();
+        let stdout = String::from_utf8_lossy(&out.stdout).to_lowercase();
 
-    let mut results = Vec::new();
-    for query in names {
-        let clean = query.trim().to_lowercase();
-        let exe_name = if clean.contains('\\') || clean.contains('/') {
-            clean.rsplit(['\\', '/']).next().unwrap_or(&clean).to_string()
-        } else {
-            clean.clone()
-        };
+        let mut results = Vec::new();
+        for query in names {
+            let clean = query.trim().to_lowercase();
+            let exe_name = if clean.contains('\\') || clean.contains('/') {
+                clean.rsplit(['\\', '/']).next().unwrap_or(&clean).to_string()
+            } else {
+                clean.clone()
+            };
 
-        let is_running = stdout.contains(&format!("\"{}\"", exe_name))
-            || stdout.contains(&exe_name);
+            let is_running = stdout.contains(&format!("\"{}\"", exe_name))
+                || stdout.contains(&exe_name);
 
-        results.push(ProcessStatus {
-            query,
-            is_running,
-            process_name: exe_name,
-        });
-    }
+            results.push(ProcessStatus {
+                query,
+                is_running,
+                process_name: exe_name,
+            });
+        }
 
-    Ok(results)
+        Ok(results)
+    })
+    .await
+    .map_err(|e| format!("Task execution error: {}", e))?
 }
 
 /// Force-terminates a process by executable name
@@ -1044,43 +1171,514 @@ pub fn launch_proxied_terminal() -> Result<u32, String> {
     Ok(child.id())
 }
 
-/// Toggles terminal & CLI developer tools proxy in User Environment
-#[command]
-pub fn set_terminal_env_proxy(proxy_url: Option<String>, enabled: bool) -> Result<String, String> {
+pub fn set_terminal_env_proxy_internal(proxy_url: Option<String>, enabled: bool) -> Result<String, String> {
     let env_reg = r"HKCU\Environment";
     let eff_url = proxy_url
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(|| "http://127.0.0.1:8183".to_string());
 
+    let vars = [
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "NO_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+        "no_proxy",
+    ];
+
+    let no_proxy_val = "localhost,127.0.0.1,::1,<local>,*.local,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,*.apple.com,*.icloud.com,apple.com,icloud.com,*.mzstatic.com,*.aaplimg.com,*.apple-cloudkit.com,*.crashlytics.com";
+
     if enabled {
-        let _ = hidden_command("reg")
-            .args(["add", env_reg, "/v", "HTTP_PROXY", "/t", "REG_SZ", "/d", &eff_url, "/f"])
-            .output();
-        let _ = hidden_command("reg")
-            .args(["add", env_reg, "/v", "HTTPS_PROXY", "/t", "REG_SZ", "/d", &eff_url, "/f"])
-            .output();
-        let _ = hidden_command("reg")
-            .args(["add", env_reg, "/v", "ALL_PROXY", "/t", "REG_SZ", "/d", &eff_url, "/f"])
-            .output();
-        let _ = hidden_command("reg")
-            .args(["add", env_reg, "/v", "NO_PROXY", "/t", "REG_SZ", "/d", "localhost,127.0.0.1", "/f"])
-            .output();
+        for var in &vars {
+            let val = if var.to_ascii_uppercase().contains("NO_PROXY") {
+                no_proxy_val
+            } else {
+                &eff_url
+            };
+            let _ = hidden_command("reg")
+                .args(["add", env_reg, "/v", var, "/t", "REG_SZ", "/d", val, "/f"])
+                .output();
+        }
+    } else {
+        for var in &vars {
+            let _ = hidden_command("reg")
+                .args(["delete", env_reg, "/v", var, "/f"])
+                .output();
+        }
+    }
+
+    // Broadcast WM_SETTINGCHANGE for "Environment"
+    let script = r#"
+$wininetCode = @"
+using System;
+using System.Runtime.InteropServices;
+public class EnvRefreshHelper {
+    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+    public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);
+    public const uint WM_SETTINGCHANGE = 0x001A;
+    public const uint SMTO_ABORTIFHUNG = 0x0002;
+    public static void Notify() {
+        UIntPtr result;
+        SendMessageTimeout((IntPtr)0xffff, WM_SETTINGCHANGE, UIntPtr.Zero, "Environment", SMTO_ABORTIFHUNG, 1000, out result);
+    }
+}
+"@
+Add-Type -TypeDefinition $wininetCode -ErrorAction SilentlyContinue
+[EnvRefreshHelper]::Notify()
+"#;
+    let _ = hidden_command("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", script])
+        .output();
+
+    if enabled {
         Ok(format!("Terminal proxy variables set to {}", eff_url))
     } else {
-        let _ = hidden_command("reg")
-            .args(["delete", env_reg, "/v", "HTTP_PROXY", "/f"])
-            .output();
-        let _ = hidden_command("reg")
-            .args(["delete", env_reg, "/v", "HTTPS_PROXY", "/f"])
-            .output();
-        let _ = hidden_command("reg")
-            .args(["delete", env_reg, "/v", "ALL_PROXY", "/f"])
-            .output();
-        let _ = hidden_command("reg")
-            .args(["delete", env_reg, "/v", "NO_PROXY", "/f"])
-            .output();
         Ok("Terminal proxy variables removed".to_string())
     }
+}
+
+/// Toggles terminal & CLI developer tools proxy in User Environment
+#[command]
+pub async fn set_terminal_env_proxy(proxy_url: Option<String>, enabled: bool) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        set_terminal_env_proxy_internal(proxy_url, enabled)
+    })
+    .await
+    .map_err(|e| format!("Task execution error: {}", e))?
+}
+
+// ── DNS Management & Network Adapter Commands ─────────────────────────────
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct NetworkAdapterInfo {
+    pub name: String,
+    pub index: u32,
+    pub description: String,
+    pub status: String,
+    pub ipv4_dns: Vec<String>,
+    pub ipv6_dns: Vec<String>,
+    pub is_dhcp: bool,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct DnsLatencyResult {
+    pub server: String,
+    pub latency_ms: Option<u64>,
+    pub error: Option<String>,
+}
+
+/// Retrieves list of all active network adapters on Windows
+#[command]
+pub async fn get_network_adapters() -> Result<Vec<NetworkAdapterInfo>, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let script = r#"
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Up' } | ForEach-Object {
+    $idx = [int]$_.InterfaceIndex
+    $name = [string]$_.Name
+    $desc = [string]$_.InterfaceDescription
+    $status = [string]$_.Status
+    $rawDns4 = (Get-DnsClientServerAddress -InterfaceIndex $idx -AddressFamily IPv4 -ErrorAction SilentlyContinue).ServerAddresses
+    $dns4 = @()
+    if ($rawDns4) {
+        $dns4 = @($rawDns4 | Where-Object { $_ -ne $null -and $_.Trim() -ne '' })
+    }
+    $rawDns6 = (Get-DnsClientServerAddress -InterfaceIndex $idx -AddressFamily IPv6 -ErrorAction SilentlyContinue).ServerAddresses
+    $dns6 = @()
+    if ($rawDns6) {
+        $dns6 = @($rawDns6 | Where-Object { $_ -ne $null -and $_.Trim() -ne '' })
+    }
+    $dhcp4 = (Get-NetIPInterface -InterfaceIndex $idx -AddressFamily IPv4 -ErrorAction SilentlyContinue).Dhcp
+    $isDhcp = ($dhcp4 -eq 'Enabled')
+    [PSCustomObject]@{
+        name = $name
+        index = $idx
+        description = $desc
+        status = $status
+        ipv4_dns = $dns4
+        ipv6_dns = $dns6
+        is_dhcp = $isDhcp
+    }
+} | ConvertTo-Json -Compress
+"#;
+        let output = hidden_command("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", script])
+            .output()
+            .map_err(|e| format!("Failed to query network adapters: {}", e))?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if stdout.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let parsed_val: serde_json::Value = match serde_json::from_str(&stdout) {
+            Ok(v) => v,
+            Err(_) => return Ok(Vec::new()),
+        };
+
+        let items = if let Some(arr) = parsed_val.as_array() {
+            arr.clone()
+        } else if parsed_val.is_object() {
+            vec![parsed_val]
+        } else {
+            return Ok(Vec::new());
+        };
+
+        let mut adapters = Vec::new();
+        for item in items {
+            let name = item["name"].as_str().unwrap_or("Network Adapter").to_string();
+            let index = item["index"].as_u64().unwrap_or(0) as u32;
+            let description = item["description"].as_str().unwrap_or("").to_string();
+            let status = item["status"].as_str().unwrap_or("Up").to_string();
+            let is_dhcp = item["is_dhcp"].as_bool().unwrap_or(true);
+
+            let mut ipv4_dns = Vec::new();
+            if let Some(arr) = item["ipv4_dns"].as_array() {
+                for v in arr {
+                    if let Some(s) = v.as_str() {
+                        let t = s.trim();
+                        if !t.is_empty() {
+                            ipv4_dns.push(t.to_string());
+                        }
+                    }
+                }
+            } else if let Some(s) = item["ipv4_dns"].as_str() {
+                let t = s.trim();
+                if !t.is_empty() {
+                    ipv4_dns.push(t.to_string());
+                }
+            }
+
+            let mut ipv6_dns = Vec::new();
+            if let Some(arr) = item["ipv6_dns"].as_array() {
+                for v in arr {
+                    if let Some(s) = v.as_str() {
+                        let t = s.trim();
+                        if !t.is_empty() {
+                            ipv6_dns.push(t.to_string());
+                        }
+                    }
+                }
+            } else if let Some(s) = item["ipv6_dns"].as_str() {
+                let t = s.trim();
+                if !t.is_empty() {
+                    ipv6_dns.push(t.to_string());
+                }
+            }
+
+            adapters.push(NetworkAdapterInfo {
+                name,
+                index,
+                description,
+                status,
+                ipv4_dns,
+                ipv6_dns,
+                is_dhcp,
+            });
+        }
+
+        Ok(adapters)
+    })
+    .await
+    .map_err(|e| format!("Task execution error: {}", e))?
+}
+
+/// Updates the internal proxy forwarder DNS servers
+#[command]
+pub fn set_active_dns(provider_id: String, servers_v4: Vec<String>, _servers_v6: Vec<String>) -> Result<String, String> {
+    let mut combined = Vec::new();
+    for ip in &servers_v4 {
+        let trimmed = ip.trim();
+        if !trimmed.is_empty() {
+            let addr = if trimmed.contains(':') { trimmed.to_string() } else { format!("{}:53", trimmed) };
+            combined.push(addr);
+        }
+    }
+    if let Ok(mut guard) = ACTIVE_DNS_SERVERS.write() {
+        if !combined.is_empty() {
+            *guard = combined;
+        } else {
+            *guard = vec![
+                "1.1.1.1:53".to_string(),
+                "1.0.0.1:53".to_string(),
+                "8.8.8.8:53".to_string(),
+                "9.9.9.9:53".to_string(),
+            ];
+        }
+    }
+    if let Ok(mut cache) = DNS_CACHE.write() {
+        *cache = None;
+    }
+    Ok(format!("Active DNS provider set to {}", provider_id))
+}
+
+/// Applies chosen DNS servers directly to the specified Windows network adapter
+#[command]
+pub async fn apply_adapter_dns(
+    adapter_index: u32,
+    servers_v4: Vec<String>,
+    servers_v6: Vec<String>,
+) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let clean_v4: Vec<String> = servers_v4.iter().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+        let clean_v6: Vec<String> = servers_v6.iter().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+
+        let v4_args = if clean_v4.is_empty() {
+            "$null".to_string()
+        } else {
+            format!("@('{}')", clean_v4.join("','"))
+        };
+
+        // If IPv6 is not provided, reset IPv6 DNS or set Cloudflare IPv6 to prevent Windows from stalling on dead link-local IPv6 DNS
+        let v6_args = if clean_v6.is_empty() {
+            "@('2606:4700:4700::1111','2606:4700:4700::1001')".to_string()
+        } else {
+            format!("@('{}')", clean_v6.join("','"))
+        };
+
+        let script = format!(
+            r#"
+$idx = {}
+$v4 = {}
+$v6 = {}
+
+$backupKey = "HKCU:\Software\ProxyRouterDesktop\NetworkBackup\$idx"
+if (-not (Test-Path $backupKey)) {{
+    New-Item -Path $backupKey -Force | Out-Null
+    $curr4 = (Get-DnsClientServerAddress -InterfaceIndex $idx -AddressFamily IPv4 -ErrorAction SilentlyContinue).ServerAddresses
+    $curr6 = (Get-DnsClientServerAddress -InterfaceIndex $idx -AddressFamily IPv6 -ErrorAction SilentlyContinue).ServerAddresses
+    Set-ItemProperty -Path $backupKey -Name 'SavedIPv4' -Value ($curr4 -join ',') -Type String -ErrorAction SilentlyContinue
+    Set-ItemProperty -Path $backupKey -Name 'SavedIPv6' -Value ($curr6 -join ',') -Type String -ErrorAction SilentlyContinue
+}}
+
+if ($v4) {{
+    Set-DnsClientServerAddress -InterfaceIndex $idx -ServerAddresses $v4 -ErrorAction SilentlyContinue
+}}
+if ($v6) {{
+    Set-DnsClientServerAddress -InterfaceIndex $idx -ServerAddresses $v6 -ErrorAction SilentlyContinue
+}}
+Clear-DnsClientCache
+"#,
+            adapter_index, v4_args, v6_args
+        );
+
+        let output = hidden_command("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+            .output()
+            .map_err(|e| format!("Failed to apply adapter DNS: {}", e))?;
+
+        if !output.status.success() {
+            let elevated_cmd = format!(
+                "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile','-Command','{}' -Wait",
+                script.replace('\'', "''").replace('\n', "; ")
+            );
+            let _ = hidden_command("powershell")
+                .args(["-NoProfile", "-NonInteractive", "-Command", &elevated_cmd])
+                .output();
+        }
+
+        let _ = set_active_dns("adapter_sync".to_string(), clean_v4, clean_v6);
+        Ok(format!("DNS applied to adapter index {}", adapter_index))
+    })
+    .await
+    .map_err(|e| format!("Task execution error: {}", e))?
+}
+
+/// Resets adapter DNS back to DHCP / automatic
+#[command]
+pub async fn reset_adapter_dns(adapter_index: u32) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let script = format!(
+            r#"
+$idx = {}
+Set-DnsClientServerAddress -InterfaceIndex $idx -ResetServerAddresses -ErrorAction SilentlyContinue
+Clear-DnsClientCache
+Remove-Item -Path "HKCU:\Software\ProxyRouterDesktop\NetworkBackup\$idx" -Recurse -Force -ErrorAction SilentlyContinue
+"#,
+            adapter_index
+        );
+
+        let output = hidden_command("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+            .output()
+            .map_err(|e| format!("Failed to reset adapter DNS: {}", e))?;
+
+        if !output.status.success() {
+            let elevated_cmd = format!(
+                "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile','-Command','{}' -Wait",
+                script.replace('\'', "''").replace('\n', "; ")
+            );
+            let _ = hidden_command("powershell")
+                .args(["-NoProfile", "-NonInteractive", "-Command", &elevated_cmd])
+                .output();
+        }
+
+        Ok(format!("DNS reset to automatic (DHCP) on adapter index {}", adapter_index))
+    })
+    .await
+    .map_err(|e| format!("Task execution error: {}", e))?
+}
+
+/// Tests latency (RTT in ms) to each provided DNS server over UDP concurrently
+#[command]
+pub async fn test_dns_latency(servers: Vec<String>) -> Result<Vec<DnsLatencyResult>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use std::sync::{Arc, Mutex};
+        let results = Arc::new(Mutex::new(Vec::new()));
+        let mut handles = Vec::new();
+
+        for raw_server in servers {
+            let server = raw_server.trim().to_string();
+            if server.is_empty() {
+                continue;
+            }
+            let results_clone = Arc::clone(&results);
+            handles.push(thread::spawn(move || {
+                let target_addr = if server.contains(':') {
+                    server.clone()
+                } else {
+                    format!("{}:53", server)
+                };
+
+                let start = Instant::now();
+                let socket = match UdpSocket::bind("0.0.0.0:0") {
+                    Ok(s) => s,
+                    Err(e) => {
+                        let mut res = results_clone.lock().unwrap();
+                        res.push(DnsLatencyResult {
+                            server,
+                            latency_ms: None,
+                            error: Some(e.to_string()),
+                        });
+                        return;
+                    }
+                };
+                let _ = socket.set_read_timeout(Some(Duration::from_millis(800)));
+                let _ = socket.set_write_timeout(Some(Duration::from_millis(800)));
+
+                let mut packet = Vec::with_capacity(64);
+                packet.extend_from_slice(&[0x3a, 0x4b, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+                packet.push(10);
+                packet.extend_from_slice(b"cloudflare");
+                packet.push(3);
+                packet.extend_from_slice(b"com");
+                packet.push(0);
+                packet.extend_from_slice(&[0x00, 0x01, 0x00, 0x01]);
+
+                if socket.send_to(&packet, &target_addr).is_err() {
+                    let mut res = results_clone.lock().unwrap();
+                    res.push(DnsLatencyResult {
+                        server,
+                        latency_ms: None,
+                        error: Some("Send error".to_string()),
+                    });
+                    return;
+                }
+
+                let mut buf = [0u8; 512];
+                let item = match socket.recv_from(&mut buf) {
+                    Ok((len, _)) if len >= 12 => {
+                        let elapsed = start.elapsed().as_millis() as u64;
+                        DnsLatencyResult {
+                            server,
+                            latency_ms: Some(elapsed),
+                            error: None,
+                        }
+                    }
+                    Ok(_) => DnsLatencyResult {
+                        server,
+                        latency_ms: None,
+                        error: Some("Truncated response".to_string()),
+                    },
+                    Err(e) => DnsLatencyResult {
+                        server,
+                        latency_ms: None,
+                        error: Some(e.to_string()),
+                    },
+                };
+
+                let mut res = results_clone.lock().unwrap();
+                res.push(item);
+            }));
+        }
+
+        for h in handles {
+            let _ = h.join();
+        }
+
+        let final_results = results.lock().unwrap().clone();
+        Ok(final_results)
+    })
+    .await
+    .map_err(|e| format!("Task execution error: {}", e))?
+}
+
+/// Restores all network settings, adapter DNS, IPv6 defaults, and environment variables
+#[command]
+pub async fn restore_network_defaults() -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let _ = clear_system_proxy_sync();
+
+        let script = r#"
+$backupRoot = "HKCU:\Software\ProxyRouterDesktop\NetworkBackup"
+if (Test-Path $backupRoot) {
+    Get-ChildItem -Path $backupRoot -ErrorAction SilentlyContinue | ForEach-Object {
+        $idx = [int]$_.PSChildName
+        if ($idx -gt 0) {
+            Set-DnsClientServerAddress -InterfaceIndex $idx -ResetServerAddresses -ErrorAction SilentlyContinue
+        }
+    }
+    Remove-Item -Path $backupRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+Clear-DnsClientCache
+
+$envReg = 'HKCU:\Environment'
+@('HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy') | ForEach-Object {
+    Remove-ItemProperty -Path $envReg -Name $_ -ErrorAction SilentlyContinue
+}
+
+$wininetCode = @"
+using System;
+using System.Runtime.InteropServices;
+public class EnvRefresh {
+    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+    public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);
+    public const uint WM_SETTINGCHANGE = 0x001A;
+    public const uint SMTO_ABORTIFHUNG = 0x0002;
+    public static void Notify() {
+        UIntPtr result;
+        SendMessageTimeout((IntPtr)0xffff, WM_SETTINGCHANGE, UIntPtr.Zero, "Environment", SMTO_ABORTIFHUNG, 1000, out result);
+        SendMessageTimeout((IntPtr)0xffff, WM_SETTINGCHANGE, UIntPtr.Zero, "Internet Settings", SMTO_ABORTIFHUNG, 1000, out result);
+    }
+}
+"@
+Add-Type -TypeDefinition $wininetCode -ErrorAction SilentlyContinue
+[EnvRefresh]::Notify()
+"#;
+
+        let _ = hidden_command("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", script])
+            .output();
+
+        if let Ok(mut guard) = ACTIVE_DNS_SERVERS.write() {
+            *guard = vec![
+                "1.1.1.1:53".to_string(),
+                "1.0.0.1:53".to_string(),
+                "8.8.8.8:53".to_string(),
+                "9.9.9.9:53".to_string(),
+            ];
+        }
+        if let Ok(mut cache) = DNS_CACHE.write() {
+            *cache = None;
+        }
+
+        Ok("All network settings, IPv6 defaults, and environment variables restored to clean state".to_string())
+    })
+    .await
+    .map_err(|e| format!("Task execution error: {}", e))?
 }
 
 // ── Autostart & Dynamic Tray Icon Commands ─────────────────────────────────
@@ -1321,15 +1919,19 @@ Add-Type -TypeDefinition $wininetCode -ErrorAction SilentlyContinue
 }
 
 fn reg_get(name: &str) -> Option<String> {
+    reg_get_key(REG_PATH, name)
+}
+
+fn reg_get_key(key_path: &str, name: &str) -> Option<String> {
     let out = hidden_command("reg")
-        .args(["query", REG_PATH, "/v", name])
+        .args(["query", key_path, "/v", name])
         .output()
         .ok()?;
 
     let stdout = String::from_utf8_lossy(&out.stdout);
     for line in stdout.lines() {
         let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() >= 3 && parts[0] == name {
+        if parts.len() >= 3 && parts[0].eq_ignore_ascii_case(name) {
             return Some(parts[2..].join(" "));
         }
     }

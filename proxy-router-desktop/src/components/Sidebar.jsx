@@ -9,6 +9,7 @@ import {
   Sparkles,
   Layers,
   ShieldCheck,
+  Globe,
   ScrollText,
   Settings,
 } from 'lucide-react';
@@ -21,6 +22,7 @@ const TOP_NAV = [
   { to: '/sites',     icon: Sparkles,    key: 'nav.sites',     defaultLabel: 'AI Services' },
   { to: '/apps',      icon: Layers,      key: 'nav.apps',      defaultLabel: 'Applications' },
   { to: '/whitelist', icon: ShieldCheck, key: 'nav.whitelist', defaultLabel: 'Whitelist' },
+  { to: '/dns',       icon: Globe,       key: 'nav.dns',       defaultLabel: 'DNS' },
   { to: '/log',       icon: ScrollText,  key: 'nav.log',       defaultLabel: 'Activity Log' },
 ];
 
