@@ -1206,10 +1206,14 @@ pub fn set_terminal_env_proxy_internal(proxy_url: Option<String>, enabled: bool)
             let _ = hidden_command("reg")
                 .args(["delete", env_reg, "/v", var, "/f"])
                 .output();
+            let _ = hidden_command("reg")
+                .args(["delete", r"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment", "/v", var, "/f"])
+                .output();
         }
+        let _ = hidden_command("netsh").args(["winhttp", "reset", "proxy"]).output();
     }
 
-    // Broadcast WM_SETTINGCHANGE for "Environment"
+    // Broadcast WM_SETTINGCHANGE for "Environment" and "Internet Settings"
     let script = r#"
 $wininetCode = @"
 using System;
@@ -1222,6 +1226,7 @@ public class EnvRefreshHelper {
     public static void Notify() {
         UIntPtr result;
         SendMessageTimeout((IntPtr)0xffff, WM_SETTINGCHANGE, UIntPtr.Zero, "Environment", SMTO_ABORTIFHUNG, 1000, out result);
+        SendMessageTimeout((IntPtr)0xffff, WM_SETTINGCHANGE, UIntPtr.Zero, "Internet Settings", SMTO_ABORTIFHUNG, 1000, out result);
     }
 }
 "@
@@ -1431,9 +1436,8 @@ pub async fn apply_adapter_dns(
             format!("@('{}')", clean_v4.join("','"))
         };
 
-        // If IPv6 is not provided, reset IPv6 DNS or set Cloudflare IPv6 to prevent Windows from stalling on dead link-local IPv6 DNS
         let v6_args = if clean_v6.is_empty() {
-            "@('2606:4700:4700::1111','2606:4700:4700::1001')".to_string()
+            "$null".to_string()
         } else {
             format!("@('{}')", clean_v6.join("','"))
         };
@@ -1448,9 +1452,7 @@ $backupKey = "HKCU:\Software\ProxyRouterDesktop\NetworkBackup\$idx"
 if (-not (Test-Path $backupKey)) {{
     New-Item -Path $backupKey -Force | Out-Null
     $curr4 = (Get-DnsClientServerAddress -InterfaceIndex $idx -AddressFamily IPv4 -ErrorAction SilentlyContinue).ServerAddresses
-    $curr6 = (Get-DnsClientServerAddress -InterfaceIndex $idx -AddressFamily IPv6 -ErrorAction SilentlyContinue).ServerAddresses
     Set-ItemProperty -Path $backupKey -Name 'SavedIPv4' -Value ($curr4 -join ',') -Type String -ErrorAction SilentlyContinue
-    Set-ItemProperty -Path $backupKey -Name 'SavedIPv6' -Value ($curr6 -join ',') -Type String -ErrorAction SilentlyContinue
 }}
 
 if ($v4) {{
@@ -1458,6 +1460,8 @@ if ($v4) {{
 }}
 if ($v6) {{
     Set-DnsClientServerAddress -InterfaceIndex $idx -ServerAddresses $v6 -ErrorAction SilentlyContinue
+}} else {{
+    Set-DnsClientServerAddress -InterfaceIndex $idx -AddressFamily IPv6 -ResetServerAddresses -ErrorAction SilentlyContinue
 }}
 Clear-DnsClientCache
 "#,
@@ -1622,36 +1626,53 @@ pub async fn restore_network_defaults() -> Result<String, String> {
         let _ = clear_system_proxy_sync();
 
         let script = r#"
+# 1. Reset DNS on ALL active network adapters back to automatic (DHCP)
+Get-NetAdapter -ErrorAction SilentlyContinue | ForEach-Object {
+    Set-DnsClientServerAddress -InterfaceIndex $_.InterfaceIndex -ResetServerAddresses -ErrorAction SilentlyContinue
+}
+
+# 2. Delete static IPv6 DNS on virtual / VPN adapters that might stall lookups
+netsh interface ipv6 delete dnsservers "Radmin VPN" all 2>$null
+
+# 3. Ensure IPv6 is enabled on all adapters
+Get-NetAdapterBinding -ComponentId ms_tcpip6 -ErrorAction SilentlyContinue | Where-Object { -not $_.Enabled } | ForEach-Object {
+    Enable-NetAdapterBinding -Name $_.Name -ComponentId ms_tcpip6 -ErrorAction SilentlyContinue
+}
+
+# 4. Remove backup keys
 $backupRoot = "HKCU:\Software\ProxyRouterDesktop\NetworkBackup"
 if (Test-Path $backupRoot) {
-    Get-ChildItem -Path $backupRoot -ErrorAction SilentlyContinue | ForEach-Object {
-        $idx = [int]$_.PSChildName
-        if ($idx -gt 0) {
-            Set-DnsClientServerAddress -InterfaceIndex $idx -ResetServerAddresses -ErrorAction SilentlyContinue
-        }
-    }
     Remove-Item -Path $backupRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-Clear-DnsClientCache
+# 5. Reset WinHTTP proxy to direct
+netsh winhttp reset proxy 2>$null
 
+# 6. Delete all proxy environment variables from User and Machine registry
+$vars = @('HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy')
 $envReg = 'HKCU:\Environment'
-@('HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy') | ForEach-Object {
-    Remove-ItemProperty -Path $envReg -Name $_ -ErrorAction SilentlyContinue
+$sysEnvReg = 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment'
+foreach ($v in $vars) {
+    Remove-ItemProperty -Path $envReg -Name $v -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path $sysEnvReg -Name $v -ErrorAction SilentlyContinue
+    [System.Environment]::SetEnvironmentVariable($v, $null, 'User')
+    [System.Environment]::SetEnvironmentVariable($v, $null, 'Process')
 }
 
+# 7. Clear DNS cache
+Clear-DnsClientCache
+
+# 8. Broadcast changes
 $wininetCode = @"
 using System;
 using System.Runtime.InteropServices;
 public class EnvRefresh {
     [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
     public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);
-    public const uint WM_SETTINGCHANGE = 0x001A;
-    public const uint SMTO_ABORTIFHUNG = 0x0002;
     public static void Notify() {
         UIntPtr result;
-        SendMessageTimeout((IntPtr)0xffff, WM_SETTINGCHANGE, UIntPtr.Zero, "Environment", SMTO_ABORTIFHUNG, 1000, out result);
-        SendMessageTimeout((IntPtr)0xffff, WM_SETTINGCHANGE, UIntPtr.Zero, "Internet Settings", SMTO_ABORTIFHUNG, 1000, out result);
+        SendMessageTimeout((IntPtr)0xffff, 0x001A, UIntPtr.Zero, "Environment", 2, 1000, out result);
+        SendMessageTimeout((IntPtr)0xffff, 0x001A, UIntPtr.Zero, "Internet Settings", 2, 1000, out result);
     }
 }
 "@
@@ -1659,9 +1680,19 @@ Add-Type -TypeDefinition $wininetCode -ErrorAction SilentlyContinue
 [EnvRefresh]::Notify()
 "#;
 
-        let _ = hidden_command("powershell")
+        let output = hidden_command("powershell")
             .args(["-NoProfile", "-NonInteractive", "-Command", script])
             .output();
+
+        if output.is_err() || !output.as_ref().map(|o| o.status.success()).unwrap_or(false) {
+            let elevated_cmd = format!(
+                "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile','-Command','{}' -Wait",
+                script.replace('\'', "''").replace('\n', "; ")
+            );
+            let _ = hidden_command("powershell")
+                .args(["-NoProfile", "-NonInteractive", "-Command", &elevated_cmd])
+                .output();
+        }
 
         if let Ok(mut guard) = ACTIVE_DNS_SERVERS.write() {
             *guard = vec![
