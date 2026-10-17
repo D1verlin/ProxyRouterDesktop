@@ -23,7 +23,7 @@ import {
   Sliders,
   Radio,
 } from 'lucide-react';
-import { useAppStore } from '../store/useAppStore';
+import { useAppStore, getDefaultPortForProtocol } from '../store/useAppStore';
 import { useTauri } from '../hooks/useTauri';
 import styles from './Settings.module.css';
 
@@ -231,6 +231,20 @@ export default function Settings() {
 
   const handleChange = (key, value) => setForm((f) => ({ ...f, [key]: value }));
 
+  const handleProtocolChange = (nextProto) => {
+    setForm((f) => {
+      const prevProto = f.proxyProtocol || 'http';
+      const prevDefault = getDefaultPortForProtocol(prevProto);
+      const nextDefault = getDefaultPortForProtocol(nextProto);
+      const shouldUpdatePort = !f.proxyPort || f.proxyPort === prevDefault;
+      return {
+        ...f,
+        proxyProtocol: nextProto,
+        proxyPort: shouldUpdatePort ? nextDefault : f.proxyPort,
+      };
+    });
+  };
+
   const handleSave = () => {
     dispatch({ type: 'UPDATE_SERVER_CONFIG', payload: form });
     dispatch({
@@ -257,6 +271,8 @@ export default function Settings() {
       authToken: form.authToken,
       proxyHost: host,
       proxyPort: form.proxyPort || port || 3128,
+      proxyProtocol: form.proxyProtocol || 'http',
+      ignoreTlsErrors: form.ignoreTlsErrors !== false,
       exportedAt: new Date().toISOString(),
     };
   };
@@ -304,6 +320,8 @@ export default function Settings() {
         apiUrl: parsed.apiUrl || form.apiUrl,
         authToken: parsed.authToken || form.authToken,
         proxyPort: parsed.proxyPort || form.proxyPort || 3128,
+        proxyProtocol: parsed.proxyProtocol || form.proxyProtocol || 'http',
+        ignoreTlsErrors: parsed.ignoreTlsErrors !== undefined ? parsed.ignoreTlsErrors : (form.ignoreTlsErrors !== false),
       };
 
       setForm(updated);
@@ -524,6 +542,42 @@ export default function Settings() {
           </div>
         </div>
 
+        {/* Upstream Proxy Protocol */}
+        <div className={styles.field}>
+          <label className={styles.label}>
+            {t('settings.proxyProtocolLabel', 'Upstream Proxy Protocol')}
+          </label>
+          <div className={styles.segmentedControl}>
+            <button
+              type="button"
+              className={`${styles.segmentBtn} ${(form.proxyProtocol || 'http') === 'http' ? styles.segmentBtnActive : ''}`}
+              onClick={() => handleProtocolChange('http')}
+            >
+              HTTP
+            </button>
+            <button
+              type="button"
+              className={`${styles.segmentBtn} ${form.proxyProtocol === 'https' ? styles.segmentBtnActive : ''}`}
+              onClick={() => handleProtocolChange('https')}
+            >
+              HTTPS (TLS)
+            </button>
+            <button
+              type="button"
+              className={`${styles.segmentBtn} ${form.proxyProtocol === 'socks5' ? styles.segmentBtnActive : ''}`}
+              onClick={() => handleProtocolChange('socks5')}
+            >
+              SOCKS5
+            </button>
+          </div>
+          <p className={styles.hint}>
+            {t(
+              'settings.proxyProtocolHint',
+              'Protocol used to communicate with your remote GOST v3 node (HTTP :3128, HTTPS/TLS :8443, SOCKS5 :1080).'
+            )}
+          </p>
+        </div>
+
         {/* Upstream Proxy Port */}
         <div className={styles.field}>
           <label className={styles.label} htmlFor="proxyPort">
@@ -533,20 +587,55 @@ export default function Settings() {
             id="proxyPort"
             type="number"
             className="input"
-            placeholder="3128"
-            value={form.proxyPort ?? 3128}
-            onChange={(e) => handleChange('proxyPort', parseInt(e.target.value, 10) || 3128)}
+            placeholder={String(getDefaultPortForProtocol(form.proxyProtocol || 'http'))}
+            value={form.proxyPort ?? getDefaultPortForProtocol(form.proxyProtocol || 'http')}
+            onChange={(e) => handleChange('proxyPort', parseInt(e.target.value, 10) || getDefaultPortForProtocol(form.proxyProtocol || 'http'))}
           />
           <p className={styles.hint}>
             {t(
               'settings.proxyPortHint',
-              'Port of the proxy daemon on the remote server (3128 for GOST / Squid, 8443 for HTTPS/TLS).'
+              'Port of the proxy daemon on the remote server (3128 for HTTP, 8443 for HTTPS/TLS, 1080 for SOCKS5).'
             )}
           </p>
         </div>
 
-        {/* PAC server port info */}
+        {/* Ignore TLS errors toggle (only relevant when HTTPS is selected) */}
+        {form.proxyProtocol === 'https' && (
+          <div className={styles.toggleRow} style={{ marginTop: 2 }}>
+            <div className={styles.toggleText}>
+              <span className={styles.toggleTitle}>
+                {t('settings.ignoreTlsLabel', 'Allow Self-Signed TLS Certificates')}
+              </span>
+              <p className={styles.toggleDesc}>
+                {t('settings.ignoreTlsDesc', 'Trust self-signed certificates on the remote VPS (recommended for private GOST nodes).')}
+              </p>
+            </div>
+            <label className={styles.switch}>
+              <input
+                type="checkbox"
+                checked={form.ignoreTlsErrors !== false}
+                onChange={(e) => handleChange('ignoreTlsErrors', e.target.checked)}
+              />
+              <span className={styles.slider} />
+            </label>
+          </div>
+        )}
+
+        {/* PAC server & Tunnel Info */}
         <div className={styles.infoCard}>
+          <div className={styles.infoRow}>
+            <span className={styles.infoLabel}>Active Tunnel Node</span>
+            <span className="mono" style={{ color: 'var(--text-primary)', fontSize: 12 }}>
+              {(form.proxyProtocol || 'http').toUpperCase()}://{(() => {
+                try {
+                  const h = new URL(form.apiUrl).hostname;
+                  return h && h !== 'localhost' ? h : '2.27.25.190';
+                } catch {
+                  return '2.27.25.190';
+                }
+              })()}:{form.proxyPort || getDefaultPortForProtocol(form.proxyProtocol || 'http')}
+            </span>
+          </div>
           <div className={styles.infoRow}>
             <span className={styles.infoLabel}>PAC Auto-Config URL</span>
             <span className="mono" style={{ color: 'var(--text-primary)', fontSize: 12 }}>

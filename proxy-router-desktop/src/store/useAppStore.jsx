@@ -271,8 +271,11 @@ const initialState = {
 
   /** Server configuration */
   serverConfig: {
-    apiUrl:    'http://your-server-ip:1135',
-    authToken: '',
+    apiUrl:          'http://your-server-ip:1135',
+    authToken:       '',
+    proxyPort:       3128,
+    proxyProtocol:   'http',
+    ignoreTlsErrors: true,
   },
 
   /** Interface language: 'en' (default) | 'ru' */
@@ -433,8 +436,32 @@ export function getEffectiveProxyHost(serverConfig) {
   return '2.27.25.190';
 }
 
+export function getDefaultPortForProtocol(protocol) {
+  switch (protocol) {
+    case 'https':
+      return 8443;
+    case 'socks5':
+      return 1080;
+    case 'http':
+    default:
+      return 3128;
+  }
+}
+
+export function getEffectiveProxyProtocol(serverConfig) {
+  const proto = (serverConfig?.proxyProtocol || 'http').toLowerCase();
+  if (proto === 'https' || proto === 'socks5') return proto;
+  return 'http';
+}
+
+export function getEffectiveIgnoreTls(serverConfig) {
+  return serverConfig?.ignoreTlsErrors !== false;
+}
+
 export function getEffectiveProxyPort(serverConfig) {
   const p = Number(serverConfig?.proxyPort);
   if (p > 0 && p <= 65535) return p;
-  return 3128;
+  const proto = getEffectiveProxyProtocol(serverConfig);
+  return getDefaultPortForProtocol(proto);
 }
+

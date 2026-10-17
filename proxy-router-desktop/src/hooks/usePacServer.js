@@ -54,7 +54,13 @@ export function usePacServer() {
     // 1. If running under Tauri, update native in-memory PAC rules directly
     if (isTauri) {
       try {
-        await updatePacRules(cfg.proxyHost || '2.27.25.190', cfg.proxyPort || 3128, allHosts);
+        await updatePacRules(
+          cfg.proxyHost || '2.27.25.190',
+          cfg.proxyPort || 3128,
+          allHosts,
+          cfg.proxyProtocol || 'http',
+          cfg.ignoreTls !== false
+        );
         setIsAlive(true);
       } catch (err) {
         console.warn('Native update_pac_rules error:', err);

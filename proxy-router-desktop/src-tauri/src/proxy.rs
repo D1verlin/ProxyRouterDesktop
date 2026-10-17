@@ -7,6 +7,7 @@ use std::process::Command;
 use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::{Duration, Instant};
+use serde::{Deserialize, Serialize};
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::{command, AppHandle, Window};
@@ -28,11 +29,37 @@ fn hidden_command(program: &str) -> Command {
 const REG_PATH: &str =
     r"HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings";
 
+// Upstream proxy protocol
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum UpstreamProtocol {
+    Http,
+    Https,
+    Socks5,
+}
+
+impl Default for UpstreamProtocol {
+    fn default() -> Self {
+        UpstreamProtocol::Http
+    }
+}
+
+impl UpstreamProtocol {
+    pub fn from_str_opt(s: Option<&str>) -> Self {
+        match s.map(|v| v.to_ascii_lowercase()).as_deref() {
+            Some("https") | Some("tls") => UpstreamProtocol::Https,
+            Some("socks5") | Some("socks") => UpstreamProtocol::Socks5,
+            _ => UpstreamProtocol::Http,
+        }
+    }
+}
+
 // Global in-memory PAC content protected by RwLock
 static PAC_CONTENT: RwLock<Option<Arc<String>>> = RwLock::new(None);
 
-// Global upstream proxy target protected by RwLock (host, port)
-static UPSTREAM_PROXY: RwLock<(String, u16)> = RwLock::new((String::new(), 3128));
+// Global upstream proxy target protected by RwLock (host, port, protocol, ignore_tls_errors)
+static UPSTREAM_PROXY: RwLock<(String, u16, UpstreamProtocol, bool)> =
+    RwLock::new((String::new(), 3128, UpstreamProtocol::Http, true));
 
 // Global proxy master switch state
 pub static PROXY_ACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
@@ -270,8 +297,12 @@ pub fn should_proxy_host(target: &str) -> bool {
     false
 }
 
-fn generate_pac_script(proxy_host: &str, proxy_port: u16, hosts: &[String]) -> String {
-    let proxy = format!("PROXY {}:{}", proxy_host, proxy_port);
+fn generate_pac_script(proxy_host: &str, proxy_port: u16, protocol: UpstreamProtocol, hosts: &[String]) -> String {
+    let proxy = match protocol {
+        UpstreamProtocol::Http => format!("PROXY {}:{}", proxy_host, proxy_port),
+        UpstreamProtocol::Https => format!("HTTPS {}:{}; PROXY {}:{}", proxy_host, proxy_port, proxy_host, proxy_port),
+        UpstreamProtocol::Socks5 => format!("SOCKS5 {}:{}; SOCKS {}:{}", proxy_host, proxy_port, proxy_host, proxy_port),
+    };
     let mut conditions = Vec::new();
     let mut seen = std::collections::HashSet::new();
 
@@ -355,7 +386,7 @@ pub fn start_embedded_pac_server() {
         "linguee.com".to_string(),
         "deepl-partners.com".to_string(),
     ];
-    let default_pac = generate_pac_script("2.27.25.190", 3128, &default_domains);
+    let default_pac = generate_pac_script("2.27.25.190", 3128, UpstreamProtocol::Http, &default_domains);
     if let Ok(mut lock) = PAC_CONTENT.write() {
         *lock = Some(Arc::new(default_pac));
     }
@@ -363,7 +394,7 @@ pub fn start_embedded_pac_server() {
         *lock = default_domains.clone();
     }
     if let Ok(mut lock) = UPSTREAM_PROXY.write() {
-        *lock = ("2.27.25.190".to_string(), 3128);
+        *lock = ("2.27.25.190".to_string(), 3128, UpstreamProtocol::Http, true);
     }
 
     thread::spawn(move || {
@@ -436,6 +467,185 @@ pub fn start_embedded_pac_server() {
     });
 }
 
+/// Performs client-side SOCKS5 handshake (RFC 1928) with the upstream proxy
+fn socks5_handshake(stream: &mut TcpStream, target: &str) -> std::io::Result<()> {
+    // 1. SOCKS5 Greeting: VER=5, NMETHODS=1, METHOD=0 (No Auth)
+    stream.write_all(&[0x05, 0x01, 0x00])?;
+    let mut resp = [0u8; 2];
+    stream.read_exact(&mut resp)?;
+    if resp[0] != 0x05 || resp[1] != 0x00 {
+        return Err(std::io::Error::new(std::io::ErrorKind::Other, "SOCKS5 authentication failed"));
+    }
+
+    // 2. Parse host and port
+    let (host, port) = if let Some(idx) = target.rfind(':') {
+        let h = &target[..idx];
+        let p = target[idx + 1..].parse::<u16>().unwrap_or(80);
+        (h, p)
+    } else {
+        (target, 80)
+    };
+
+    // 3. SOCKS5 CONNECT command: VER=5, CMD=1, RSV=0
+    let mut req = Vec::with_capacity(7 + host.len());
+    req.extend_from_slice(&[0x05, 0x01, 0x00]);
+
+    if let Ok(ip) = host.parse::<Ipv4Addr>() {
+        req.push(0x01); // ATYP=1 (IPv4)
+        req.extend_from_slice(&ip.octets());
+    } else if let Ok(ip6) = host.parse::<std::net::Ipv6Addr>() {
+        req.push(0x04); // ATYP=4 (IPv6)
+        req.extend_from_slice(&ip6.octets());
+    } else {
+        req.push(0x03); // ATYP=3 (Domain)
+        let host_bytes = host.as_bytes();
+        if host_bytes.len() > 255 {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "Domain too long for SOCKS5"));
+        }
+        req.push(host_bytes.len() as u8);
+        req.extend_from_slice(host_bytes);
+    }
+    req.extend_from_slice(&port.to_be_bytes());
+    stream.write_all(&req)?;
+
+    // 4. SOCKS5 Response: [VER, REP, RSV, ATYP, BND.ADDR, BND.PORT]
+    let mut header = [0u8; 4];
+    stream.read_exact(&mut header)?;
+    if header[0] != 0x05 || header[1] != 0x00 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("SOCKS5 connect failed with status code {}", header[1]),
+        ));
+    }
+
+    match header[3] {
+        0x01 => {
+            let mut buf = [0u8; 6];
+            stream.read_exact(&mut buf)?;
+        }
+        0x03 => {
+            let mut len_buf = [0u8; 1];
+            stream.read_exact(&mut len_buf)?;
+            let mut domain_buf = vec![0u8; len_buf[0] as usize + 2];
+            stream.read_exact(&mut domain_buf)?;
+        }
+        0x04 => {
+            let mut buf = [0u8; 18];
+            stream.read_exact(&mut buf)?;
+        }
+        other => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Unsupported SOCKS5 address type: {}", other),
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+/// Asynchronously forwards traffic to upstream via TLS-encrypted HTTPS CONNECT tunnel
+fn forward_https_upstream(
+    mut client: TcpStream,
+    client_leftover: Vec<u8>,
+    target: String,
+    upstream_host: String,
+    upstream_port: u16,
+    ignore_tls_err: bool,
+) {
+    tauri::async_runtime::spawn(async move {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let upstream_addr_str = format!("{}:{}", upstream_host, upstream_port);
+        let upstream_tcp = match tokio::net::TcpStream::connect(&upstream_addr_str).await {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("[local-forwarder] HTTPS upstream TCP connection failed: {}", e);
+                let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
+                return;
+            }
+        };
+
+        let mut builder = native_tls::TlsConnector::builder();
+        if ignore_tls_err {
+            builder.danger_accept_invalid_certs(true);
+            builder.danger_accept_invalid_hostnames(true);
+        }
+        let connector = match builder.build() {
+            Ok(c) => tokio_native_tls::TlsConnector::from(c),
+            Err(e) => {
+                eprintln!("[local-forwarder] TLS builder failed: {}", e);
+                let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
+                return;
+            }
+        };
+
+        let mut tls_stream = match connector.connect(&upstream_host, upstream_tcp).await {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("[local-forwarder] TLS handshake with upstream failed: {}", e);
+                let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
+                return;
+            }
+        };
+
+        let connect_req = format!(
+            "CONNECT {} HTTP/1.1\r\nHost: {}\r\nProxy-Connection: Keep-Alive\r\n\r\n",
+            target, target
+        );
+        if let Err(e) = tls_stream.write_all(connect_req.as_bytes()).await {
+            eprintln!("[local-forwarder] Writing CONNECT to HTTPS upstream failed: {}", e);
+            let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
+            return;
+        }
+
+        // Read until end of HTTP response headers
+        let mut resp_buf = Vec::new();
+        let mut byte_buf = [0u8; 1];
+        let mut found_header_end = false;
+        while resp_buf.len() < 4096 {
+            match tls_stream.read(&mut byte_buf).await {
+                Ok(1) => {
+                    resp_buf.push(byte_buf[0]);
+                    if resp_buf.ends_with(b"\r\n\r\n") || resp_buf.ends_with(b"\n\n") {
+                        found_header_end = true;
+                        break;
+                    }
+                }
+                _ => break,
+            }
+        }
+
+        let resp_str = String::from_utf8_lossy(&resp_buf);
+        if !found_header_end || !resp_str.contains("200") {
+            eprintln!("[local-forwarder] HTTPS upstream non-200 response: {}", resp_str.lines().next().unwrap_or(""));
+            let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
+            return;
+        }
+
+        let _ = client.set_nonblocking(true);
+        let mut async_client = match tokio::net::TcpStream::from_std(client) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("[local-forwarder] Async client conversion error: {}", e);
+                return;
+            }
+        };
+
+        if let Err(_) = async_client.write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n").await {
+            return;
+        }
+
+        if !client_leftover.is_empty() {
+            if let Err(_) = tls_stream.write_all(&client_leftover).await {
+                return;
+            }
+        }
+
+        let _ = tokio::io::copy_bidirectional(&mut async_client, &mut tls_stream).await;
+    });
+}
+
 /// Starts embedded local HTTP CONNECT proxy forwarder on 127.0.0.1:8183
 pub fn start_local_proxy_forwarder() {
     thread::spawn(|| {
@@ -469,7 +679,7 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
     }
 
     let is_active = PROXY_ACTIVE.load(std::sync::atomic::Ordering::Relaxed);
-    let (upstream_host, upstream_port) = {
+    let (upstream_host, upstream_port, upstream_proto, ignore_tls_err) = {
         let lock = UPSTREAM_PROXY.read().unwrap();
         lock.clone()
     };
@@ -491,13 +701,34 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
             }
         }
 
+        let client_leftover = reader.buffer().to_vec();
+
+        // 1. If upstream is HTTPS (TLS), forward via async TLS tunnel
+        if should_proxy && upstream_proto == UpstreamProtocol::Https {
+            if upstream_host.is_empty() {
+                let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
+                return Ok(());
+            }
+            let client_clone = client.try_clone()?;
+            forward_https_upstream(
+                client_clone,
+                client_leftover,
+                target.to_string(),
+                upstream_host,
+                upstream_port,
+                ignore_tls_err,
+            );
+            return Ok(());
+        }
+
+        // 2. HTTP or SOCKS5 upstream (or Direct)
         let target_stream = if should_proxy {
             if upstream_host.is_empty() {
                 let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
                 return Ok(());
             }
 
-            // Route via upstream Squid proxy on VPS
+            // Route via upstream proxy on VPS
             let upstream_addrs = resolve_target_addresses(&format!("{}:{}", upstream_host, upstream_port));
             let mut upstream = None;
             for addr in upstream_addrs {
@@ -519,31 +750,39 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
             upstream.set_read_timeout(Some(Duration::from_secs(45)))?;
             upstream.set_write_timeout(Some(Duration::from_secs(45)))?;
 
-            let connect_req = format!("CONNECT {} HTTP/1.1\r\nHost: {}\r\nProxy-Connection: Keep-Alive\r\n\r\n", target, target);
-            if let Err(e) = upstream.write_all(connect_req.as_bytes()) {
-                eprintln!("[local-forwarder] Failed writing CONNECT to upstream: {}", e);
-                let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
-                return Ok(());
-            }
-
-            let mut upstream_reader = BufReader::new(upstream.try_clone()?);
-            let mut resp_line = String::new();
-            if upstream_reader.read_line(&mut resp_line).is_err() || !resp_line.contains("200") {
-                let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
-                return Ok(());
-            }
-
-            loop {
-                let mut line = String::new();
-                if upstream_reader.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" || line == "\n" {
-                    break;
+            if upstream_proto == UpstreamProtocol::Socks5 {
+                if let Err(e) = socks5_handshake(&mut upstream, target) {
+                    eprintln!("[local-forwarder] SOCKS5 handshake to upstream failed: {}", e);
+                    let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
+                    return Ok(());
                 }
-            }
+            } else {
+                let connect_req = format!("CONNECT {} HTTP/1.1\r\nHost: {}\r\nProxy-Connection: Keep-Alive\r\n\r\n", target, target);
+                if let Err(e) = upstream.write_all(connect_req.as_bytes()) {
+                    eprintln!("[local-forwarder] Failed writing CONNECT to upstream: {}", e);
+                    let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
+                    return Ok(());
+                }
 
-            // Flush any excess bytes that were buffered inside upstream_reader
-            let upstream_leftover = upstream_reader.buffer().to_vec();
-            if !upstream_leftover.is_empty() {
-                let _ = client.write_all(&upstream_leftover);
+                let mut upstream_reader = BufReader::new(upstream.try_clone()?);
+                let mut resp_line = String::new();
+                if upstream_reader.read_line(&mut resp_line).is_err() || !resp_line.contains("200") {
+                    let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
+                    return Ok(());
+                }
+
+                loop {
+                    let mut line = String::new();
+                    if upstream_reader.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" || line == "\n" {
+                        break;
+                    }
+                }
+
+                // Flush any excess bytes that were buffered inside upstream_reader
+                let upstream_leftover = upstream_reader.buffer().to_vec();
+                if !upstream_leftover.is_empty() {
+                    let _ = client.write_all(&upstream_leftover);
+                }
             }
 
             upstream
@@ -575,7 +814,6 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
         let _ = target_stream.set_write_timeout(None);
 
         // Send any data that BufReader already read from client socket (e.g. TLS ClientHello)
-        let client_leftover = reader.buffer().to_vec();
         if !client_leftover.is_empty() {
             let mut target_clone = target_stream.try_clone()?;
             let _ = target_clone.write_all(&client_leftover);
@@ -605,13 +843,27 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
                     break;
                 }
             }
-            match upstream {
+            let mut upstream = match upstream {
                 Some(s) => s,
                 None => {
                     let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
                     return Ok(());
                 }
+            };
+            if upstream_proto == UpstreamProtocol::Socks5 {
+                let host_part = target.trim_start_matches("http://").split('/').next().unwrap_or(target);
+                let addr_str = if host_part.contains(':') {
+                    host_part.to_string()
+                } else {
+                    format!("{}:80", host_part)
+                };
+                if let Err(e) = socks5_handshake(&mut upstream, &addr_str) {
+                    eprintln!("[local-forwarder] SOCKS5 plain HTTP handshake failed: {}", e);
+                    let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
+                    return Ok(());
+                }
             }
+            upstream
         } else {
             let host_part = target.trim_start_matches("http://").split('/').next().unwrap_or(target);
             let addr_str = if host_part.contains(':') {
@@ -636,7 +888,7 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
             }
         };
 
-        let formatted_request_line = if should_proxy {
+        let formatted_request_line = if should_proxy && upstream_proto != UpstreamProtocol::Socks5 {
             request_line
         } else {
             let relative_path = if let Some(idx) = target.find("://") {
@@ -708,11 +960,18 @@ fn resolve_effective_proxy_target(host: &str, port: u16) -> (String, u16) {
 
 /// Updates upstream proxy target in memory
 #[command]
-pub fn update_upstream_proxy(proxy_host: String, proxy_port: u16) -> Result<String, String> {
+pub fn update_upstream_proxy(
+    proxy_host: String,
+    proxy_port: u16,
+    proxy_protocol: Option<String>,
+    ignore_tls: Option<bool>,
+) -> Result<String, String> {
     let (eff_host, eff_port) = resolve_effective_proxy_target(&proxy_host, proxy_port);
+    let proto = UpstreamProtocol::from_str_opt(proxy_protocol.as_deref());
+    let ignore_tls_err = ignore_tls.unwrap_or(true);
     if let Ok(mut lock) = UPSTREAM_PROXY.write() {
-        *lock = (eff_host.clone(), eff_port);
-        Ok(format!("Upstream proxy set to {}:{}", eff_host, eff_port))
+        *lock = (eff_host.clone(), eff_port, proto, ignore_tls_err);
+        Ok(format!("Upstream proxy set to {:?}://{}:{}", proto, eff_host, eff_port))
     } else {
         Err("Failed to acquire write lock for UPSTREAM_PROXY".to_string())
     }
@@ -720,10 +979,18 @@ pub fn update_upstream_proxy(proxy_host: String, proxy_port: u16) -> Result<Stri
 
 /// Updates PAC rules in memory from the Tauri UI
 #[command]
-pub fn update_pac_rules(proxy_host: String, proxy_port: u16, hosts: Vec<String>) -> Result<String, String> {
+pub fn update_pac_rules(
+    proxy_host: String,
+    proxy_port: u16,
+    hosts: Vec<String>,
+    proxy_protocol: Option<String>,
+    ignore_tls: Option<bool>,
+) -> Result<String, String> {
     let (eff_host, eff_port) = resolve_effective_proxy_target(&proxy_host, proxy_port);
+    let proto = UpstreamProtocol::from_str_opt(proxy_protocol.as_deref());
+    let ignore_tls_err = ignore_tls.unwrap_or(true);
     if let Ok(mut lock) = UPSTREAM_PROXY.write() {
-        *lock = (eff_host.clone(), eff_port);
+        *lock = (eff_host.clone(), eff_port, proto, ignore_tls_err);
     }
     if let Ok(mut lock) = ROUTED_DOMAINS.write() {
         let mut cleaned = Vec::new();
@@ -740,7 +1007,7 @@ pub fn update_pac_rules(proxy_host: String, proxy_port: u16, hosts: Vec<String>)
         }
         *lock = cleaned;
     }
-    let script = generate_pac_script(&eff_host, eff_port, &hosts);
+    let script = generate_pac_script(&eff_host, eff_port, proto, &hosts);
     if let Ok(mut lock) = PAC_CONTENT.write() {
         *lock = Some(Arc::new(script));
         Ok("PAC rules updated".to_string())

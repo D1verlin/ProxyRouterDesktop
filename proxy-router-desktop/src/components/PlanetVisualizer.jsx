@@ -24,7 +24,7 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { RefreshCw, Copy, Check } from 'lucide-react';
-import { useAppStore } from '../store/useAppStore';
+import { useAppStore, getEffectiveProxyProtocol, getEffectiveProxyPort } from '../store/useAppStore';
 import { drawOfficialBrandLogo } from '../assets/brandLogos.js';
 import { EARTH_DOTS, EARTH_RINGS } from '../assets/earthData.js';
 import styles from './PlanetVisualizer.module.css';
@@ -129,7 +129,7 @@ export default function PlanetVisualizer({
   onRefreshIp,
   onOpenSettings,
 }) {
-  const { t } = useAppStore();
+  const { state, t } = useAppStore();
   const canvasRef = useRef(null);
   const [copied, setCopied] = useState(false);
   const isHoveringRef = useRef(false);
@@ -141,6 +141,10 @@ export default function PlanetVisualizer({
   const mouseDownPosRef = useRef({ x: 0, y: 0 });
   const lastMouseRef = useRef({ x: 0, y: 0 });
   const rotRef = useRef({ y: 0.9, x: 0.32 });
+
+  const proxyProto = getEffectiveProxyProtocol(state?.serverConfig).toUpperCase();
+  const proxyPort = getEffectiveProxyPort(state?.serverConfig);
+  const proxySubtext = `GOST ${proxyProto} :${proxyPort}`;
 
   // ── Build Geographically Distinct Telemetry Network ─────────────────────────
   const { clientNode, proxyNode, companyNodes, arcs } = useMemo(() => {
@@ -154,11 +158,11 @@ export default function PlanetVisualizer({
       type: 'client',
     };
 
-    // 2. Gateway: Squid Proxy Server in Western Europe / Paris (48.8°N, 2.3°E)
+    // 2. Gateway: GOST Proxy Server in Western Europe / Paris (48.8°N, 2.3°E)
     const proxy = {
       id: 'proxy',
       name: t('planet.proxy', 'Proxy'),
-      subtext: 'Proxy Relay',
+      subtext: proxySubtext,
       lat: toRad(48.8),
       lon: toRad(2.3),
       type: 'proxy',

@@ -137,11 +137,15 @@ export function useTauri() {
     throw new Error('Could not detect public IPv4');
   }, []);
 
-  const updatePacRules = useCallback(async (proxyHost, proxyPort, hosts) => {
+  const updatePacRules = useCallback(async (proxyHost, proxyPort, hosts, proxyProtocol = 'http', ignoreTls = true) => {
     return invoke('update_pac_rules', {
       proxyHost,
       proxyPort,
       hosts,
+      proxyProtocol,
+      proxy_protocol: proxyProtocol,
+      ignoreTls: Boolean(ignoreTls),
+      ignore_tls: Boolean(ignoreTls),
     });
   }, []);
 
@@ -171,8 +175,15 @@ export function useTauri() {
     return invoke('launch_proxied_terminal');
   }, []);
 
-  const updateUpstreamProxy = useCallback(async (proxyHost, proxyPort) => {
-    return invoke('update_upstream_proxy', { proxyHost, proxyPort });
+  const updateUpstreamProxy = useCallback(async (proxyHost, proxyPort, proxyProtocol = 'http', ignoreTls = true) => {
+    return invoke('update_upstream_proxy', {
+      proxyHost,
+      proxyPort,
+      proxyProtocol,
+      proxy_protocol: proxyProtocol,
+      ignoreTls: Boolean(ignoreTls),
+      ignore_tls: Boolean(ignoreTls),
+    });
   }, []);
 
   const setTerminalEnvProxy = useCallback(async (proxyUrl, enabled) => {
