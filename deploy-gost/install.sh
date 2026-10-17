@@ -41,12 +41,28 @@ if ! command -v npm &>/dev/null; then
     apt-get install -y --no-install-recommends npm || true
 fi
 
-# 3. Остановка и отключение старого Squid
+# 3. Остановка и отключение старых сервисов Squid и старого бота
 if systemctl is-active --quiet squid 2>/dev/null || systemctl is-enabled --quiet squid 2>/dev/null; then
     warn "Обнаружен работающий Squid. Останавливаем и отключаем его..."
     systemctl stop squid || true
     systemctl disable squid || true
     success "Squid успешно остановлен. Порт 3128 освобожден."
+fi
+
+if systemctl is-active --quiet squid-bot 2>/dev/null || systemctl is-enabled --quiet squid-bot 2>/dev/null; then
+    warn "Обнаружен старый сервис squid-bot. Останавливаем и отключаем его..."
+    systemctl stop squid-bot || true
+    systemctl disable squid-bot || true
+    success "Старый squid-bot отключен."
+fi
+
+if command -v pm2 &>/dev/null; then
+    if pm2 list 2>/dev/null | grep -q "proxy-router-api"; then
+        warn "Обнаружен дубликат API в PM2. Удаляем из PM2..."
+        pm2 delete proxy-router-api || true
+        pm2 save || true
+        success "Старый API удален из PM2."
+    fi
 fi
 
 # 4. Сохранение и перенос существующих IP-адресов
@@ -120,8 +136,13 @@ cp "$SCRIPT_DIR/index.js" /opt/proxy-whitelist-api/
 cp "$SCRIPT_DIR/package.json" /opt/proxy-whitelist-api/
 if [[ -f "$SCRIPT_DIR/tokens.json" ]]; then
     cp "$SCRIPT_DIR/tokens.json" /opt/proxy-whitelist-api/
-elif [[ ! -f /opt/proxy-whitelist-api/tokens.json && -f "$SCRIPT_DIR/tokens.json.example" ]]; then
-    cp "$SCRIPT_DIR/tokens.json.example" /opt/proxy-whitelist-api/tokens.json
+elif [[ ! -f /opt/proxy-whitelist-api/tokens.json ]]; then
+    for candidate in /opt/proxy-router-api/tokens.json /opt/proxy-whitelist/tokens.json /opt/squid-bot/tokens.json "$SCRIPT_DIR/tokens.json.example"; do
+        if [[ -f "$candidate" ]]; then
+            cp "$candidate" /opt/proxy-whitelist-api/tokens.json
+            break
+        fi
+    done
 fi
 
 (cd /opt/proxy-whitelist-api && npm install --omit=dev --silent)
