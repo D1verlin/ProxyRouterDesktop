@@ -97,6 +97,32 @@ export function useTauri() {
     return invoke('clear_system_proxy');
   }, []);
 
+  const apiWhitelistRequest = useCallback(async (url, method = 'GET', token = '', ip = null) => {
+    if (isTauri) {
+      const res = await invoke('api_whitelist_request', {
+        url,
+        method: method.toUpperCase(),
+        token: token || null,
+        ip: ip || null,
+      });
+      if (res && typeof res === 'object' && res.error) {
+        throw new Error(res.error);
+      }
+      return res;
+    }
+
+    // Fallback for browser mode
+    const headers = {};
+    if (token) headers['Authorization'] = `Bearer ${token.replace(/^Bearer\s+/i, '')}`;
+    if (ip && method !== 'GET') headers['Content-Type'] = 'application/json';
+    const opts = { method, headers, signal: AbortSignal.timeout(8000) };
+    if (ip && method !== 'GET') opts.body = JSON.stringify({ ip });
+    const res = await fetch(url, opts);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return data;
+  }, []);
+
   const getProxyStatus = useCallback(async () => {
     return invoke('get_proxy_status');
   }, []);
@@ -266,6 +292,7 @@ export function useTauri() {
     setSystemProxy,
     clearSystemProxy,
     getProxyStatus,
+    apiWhitelistRequest,
     getNativeIp,
     updatePacRules,
     updateUpstreamProxy,

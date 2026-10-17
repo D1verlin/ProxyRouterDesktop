@@ -102,6 +102,17 @@ function runScript(action, ip) {
 const app = express();
 app.use(express.json());
 
+// ── CORS Middleware (Required for desktop WebViews and browsers) ──────────────
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  next();
+});
+
 // Auth middleware
 function requireAuth(req, res, next) {
   const header = (req.headers['authorization'] ?? '').trim();

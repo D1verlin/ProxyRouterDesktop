@@ -6,11 +6,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { RefreshCw, Plus, Trash2, CheckCircle2, ShieldCheck } from 'lucide-react';
 import { useAppStore, getEffectiveApiUrl, getEffectiveAuthToken } from '../store/useAppStore';
+import { useTauri } from '../hooks/useTauri';
 import styles from './Whitelist.module.css';
 
 export default function Whitelist() {
   const { state, dispatch, t } = useAppStore();
   const { serverConfig, publicIp } = state;
+  const { apiWhitelistRequest } = useTauri();
   const [ips, setIps] = useState([]);
   const [loading, setLoading] = useState(false);
   const [manualIp, setManualIp] = useState('');
@@ -34,26 +36,20 @@ export default function Whitelist() {
     setLoading(true);
     setNotice(null);
     try {
-      const res = await fetch(`${normalizedUrl}/api/whitelist`, {
-        headers: { Authorization: `Bearer ${authToken}` },
-        signal: AbortSignal.timeout(5000),
-      });
+      const data = await apiWhitelistRequest(
+        `${normalizedUrl}/api/whitelist`,
+        'GET',
+        authToken
+      );
 
-      if (!res.ok) {
-        throw new Error(
-          res.status === 401 ? 'Unauthorized (Invalid Token)' : `HTTP ${res.status}`
-        );
-      }
-
-      const data = await res.json();
-      const list = Array.isArray(data.ips) ? data.ips : [];
+      const list = Array.isArray(data?.ips) ? data.ips : [];
       setIps(list);
       dispatch({
         type: 'ADD_LOG_ENTRY',
         payload: {
           category: 'AUTH',
           level: 'info',
-          msg: `Fetched ${list.length} whitelist entries from Squid`,
+          msg: `Fetched ${list.length} whitelist entries from GOST`,
         },
       });
     } catch (err) {
@@ -69,7 +65,7 @@ export default function Whitelist() {
     } finally {
       setLoading(false);
     }
-  }, [normalizedUrl, serverConfig.authToken, dispatch, t]);
+  }, [normalizedUrl, authToken, apiWhitelistRequest, dispatch, t]);
 
   const handleAddIp = async (ipToAdd) => {
     const target = (ipToAdd || manualIp).trim();
@@ -78,25 +74,17 @@ export default function Whitelist() {
     setLoading(true);
     setNotice(null);
     try {
-      const res = await fetch(`${normalizedUrl}/api/whitelist`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${authToken}`,
-        },
-        body: JSON.stringify({ ip: target }),
-        signal: AbortSignal.timeout(6000),
-      });
-
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson.error || `HTTP ${res.status}`);
-      }
+      await apiWhitelistRequest(
+        `${normalizedUrl}/api/whitelist`,
+        'POST',
+        authToken,
+        target
+      );
 
       setManualIp('');
       setNotice({
         type: 'success',
-        text: `IP ${target} ${t('whitelist.statusSuccess', 'successfully authorized in Squid')}`,
+        text: `IP ${target} ${t('whitelist.statusSuccess', 'successfully authorized in GOST')}`,
       });
       dispatch({
         type: 'ADD_LOG_ENTRY',
@@ -126,19 +114,12 @@ export default function Whitelist() {
     setLoading(true);
     setNotice(null);
     try {
-      const res = await fetch(`${normalizedUrl}/api/whitelist`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${authToken}`,
-        },
-        body: JSON.stringify({ ip: ipToRemove }),
-        signal: AbortSignal.timeout(6000),
-      });
-
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
+      await apiWhitelistRequest(
+        `${normalizedUrl}/api/whitelist`,
+        'DELETE',
+        authToken,
+        ipToRemove
+      );
 
       setNotice({
         type: 'success',

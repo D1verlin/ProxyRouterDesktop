@@ -56,7 +56,7 @@ const openExternalLink = async (url) => {
 export default function Settings() {
   const { state, dispatch, t } = useAppStore();
   const { serverConfig, language, autostart, terminalProxyActive, isActive } = state;
-  const { getAutostartStatus, setAutostart, setTerminalEnvProxy } = useTauri();
+  const { getAutostartStatus, setAutostart, setTerminalEnvProxy, apiWhitelistRequest } = useTauri();
 
   const [form, setForm] = useState({ ...serverConfig });
   const [showToken, setShowToken] = useState(false);
@@ -254,24 +254,13 @@ export default function Settings() {
     const targetToken = getEffectiveAuthToken(form);
 
     try {
-      const res = await fetch(`${targetUrl}/api/whitelist`, {
-        headers: { Authorization: `Bearer ${targetToken}` },
-        signal: AbortSignal.timeout(5000),
-      });
+      const data = await apiWhitelistRequest(
+        `${targetUrl}/api/whitelist`,
+        'GET',
+        targetToken
+      );
 
-      if (res.status === 401) {
-        throw new Error(
-          language === 'ru'
-            ? 'Токен отклонен сервером (401 Unauthorized). Проверьте ключ!'
-            : 'Token rejected by server (401 Unauthorized). Check your key!'
-        );
-      }
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-      }
-
-      const data = await res.json();
-      const count = Array.isArray(data.ips) ? data.ips.length : 0;
+      const count = Array.isArray(data?.ips) ? data.ips.length : 0;
       setTestResult({
         type: 'success',
         text:
@@ -674,35 +663,6 @@ export default function Settings() {
           </div>
         )}
 
-        {/* PAC server & Tunnel Info */}
-        <div className={styles.infoCard}>
-          <div className={styles.infoRow}>
-            <span className={styles.infoLabel}>Active Tunnel Node</span>
-            <span className="mono" style={{ color: 'var(--text-primary)', fontSize: 12 }}>
-              {(form.proxyProtocol || 'http').toUpperCase()}://{(() => {
-                try {
-                  const h = new URL(form.apiUrl).hostname;
-                  return h && h !== 'localhost' ? h : '2.27.25.190';
-                } catch {
-                  return '2.27.25.190';
-                }
-              })()}:{form.proxyPort || getDefaultPortForProtocol(form.proxyProtocol || 'http')}
-            </span>
-          </div>
-          <div className={styles.infoRow}>
-            <span className={styles.infoLabel}>PAC Auto-Config URL</span>
-            <span className="mono" style={{ color: 'var(--text-primary)', fontSize: 12 }}>
-              http://127.0.0.1:8182/proxy.pac
-            </span>
-          </div>
-          <div className={styles.infoRow}>
-            <span className={styles.infoLabel}>Local Forwarder Port</span>
-            <span className="mono" style={{ color: 'var(--text-primary)', fontSize: 12 }}>
-              127.0.0.1:8183 (CONNECT Tunnel)
-            </span>
-          </div>
-        </div>
-
         {/* Save & Test Connection */}
         <div className={styles.actions}>
           <button
@@ -732,6 +692,35 @@ export default function Settings() {
             <span>{testResult.text}</span>
           </div>
         )}
+
+        {/* PAC server & Tunnel Info */}
+        <div className={styles.infoCard}>
+          <div className={styles.infoRow}>
+            <span className={styles.infoLabel}>Active Tunnel Node</span>
+            <span className="mono" style={{ color: 'var(--text-primary)', fontSize: 12 }}>
+              {(form.proxyProtocol || 'http').toUpperCase()}://{(() => {
+                try {
+                  const h = new URL(form.apiUrl).hostname;
+                  return h && h !== 'localhost' ? h : '2.27.25.190';
+                } catch {
+                  return '2.27.25.190';
+                }
+              })()}:{form.proxyPort || getDefaultPortForProtocol(form.proxyProtocol || 'http')}
+            </span>
+          </div>
+          <div className={styles.infoRow}>
+            <span className={styles.infoLabel}>PAC Auto-Config URL</span>
+            <span className="mono" style={{ color: 'var(--text-primary)', fontSize: 12 }}>
+              http://127.0.0.1:8182/proxy.pac
+            </span>
+          </div>
+          <div className={styles.infoRow}>
+            <span className={styles.infoLabel}>Local Forwarder Port</span>
+            <span className="mono" style={{ color: 'var(--text-primary)', fontSize: 12 }}>
+              127.0.0.1:8183 (CONNECT Tunnel)
+            </span>
+          </div>
+        </div>
 
         <hr className={styles.separator} />
 

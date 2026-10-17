@@ -3,7 +3,7 @@
 mod proxy;
 
 use proxy::{
-    app_quit, apply_adapter_dns, check_running_processes, clear_system_proxy,
+    api_whitelist_request, app_quit, apply_adapter_dns, check_running_processes, clear_system_proxy,
     get_autostart_status, get_network_adapters, get_proxy_status, get_public_ip,
     kill_process, launch_app_with_proxy, launch_proxied_terminal, pick_exe_file,
     reset_adapter_dns, restore_network_defaults, set_active_dns, set_autostart,
@@ -102,6 +102,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            api_whitelist_request,
             set_system_proxy,
             clear_system_proxy,
             get_proxy_status,

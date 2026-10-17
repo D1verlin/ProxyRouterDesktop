@@ -1186,6 +1186,55 @@ pub async fn get_public_ip() -> Result<String, String> {
     .map_err(|e| format!("Task execution error: {}", e))?
 }
 
+/// Native HTTP bridge for Whitelist API requests — bypasses WebView CORS completely.
+#[command]
+pub async fn api_whitelist_request(
+    url: String,
+    method: Option<String>,
+    token: Option<String>,
+    ip: Option<String>,
+) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut cmd = hidden_command("curl.exe");
+        cmd.args(["--silent", "--connect-timeout", "5", "--max-time", "8"]);
+
+        let m = method.unwrap_or_else(|| "GET".to_string()).to_uppercase();
+        cmd.args(["-X", &m]);
+
+        if let Some(tok) = token {
+            let clean = tok.trim().trim_start_matches("Bearer ").trim();
+            if !clean.is_empty() {
+                cmd.args(["-H", &format!("Authorization: Bearer {}", clean)]);
+            }
+        }
+
+        if let Some(target_ip) = ip {
+            if m == "POST" || m == "DELETE" {
+                cmd.args(["-H", "Content-Type: application/json"]);
+                let body = format!("{{\"ip\":\"{}\"}}", target_ip.trim());
+                cmd.args(["--data-raw", &body]);
+            }
+        }
+
+        cmd.arg(&url);
+
+        let out = cmd.output().map_err(|e| format!("Failed to execute curl: {}", e))?;
+        let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if stdout.is_empty() {
+            if out.status.success() {
+                return Ok(serde_json::json!({ "ok": true }));
+            }
+            let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+            return Err(if err.is_empty() { "Request failed with empty response".to_string() } else { err });
+        }
+
+        serde_json::from_str::<serde_json::Value>(&stdout)
+            .map_err(|_e| format!("Server returned invalid response: {}", stdout))
+    })
+    .await
+    .map_err(|e| format!("Task execution error: {}", e))?
+}
+
 // ── Application (.exe) Routing & Process Management ───────────────────────────
 
 fn expand_env_vars(raw: &str) -> String {

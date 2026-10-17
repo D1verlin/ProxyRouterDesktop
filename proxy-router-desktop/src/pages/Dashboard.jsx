@@ -33,7 +33,7 @@ export default function Dashboard() {
     terminalProxyActive,
   } = state;
 
-  const { setSystemProxy, clearSystemProxy, getNativeIp } = useTauri();
+  const { setSystemProxy, clearSystemProxy, getNativeIp, apiWhitelistRequest } = useTauri();
   const { pacUrl, checkHealth, updateConfig } = usePacServer();
   const [errorNotice, setErrorNotice] = useState(null);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -93,29 +93,20 @@ export default function Dashboard() {
     dispatch({ type: 'SET_WHITELIST_STATUS', payload: null });
 
     try {
-      const res = await fetch(`${normalizedUrl}/api/whitelist`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ ip }),
-        signal: AbortSignal.timeout(8000),
-      });
+      const resData = await apiWhitelistRequest(
+        `${normalizedUrl}/api/whitelist`,
+        'POST',
+        token,
+        ip
+      );
 
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson.error || `HTTP ${res.status}`);
-      }
-
-      const resData = await res.json();
       dispatch({ type: 'SET_WHITELIST_STATUS', payload: 'success' });
       dispatch({
         type: 'ADD_LOG_ENTRY',
         payload: {
           category: 'AUTH',
           level: 'info',
-          msg: `IP ${ip} authorized on Squid whitelist (${resData.user || 'authorized'})`,
+          msg: `IP ${ip} authorized on GOST whitelist (${resData?.user || 'authorized'})`,
         },
       });
       return true;
@@ -130,7 +121,7 @@ export default function Dashboard() {
     } finally {
       dispatch({ type: 'SET_WHITELISTING', payload: false });
     }
-  }, [serverConfig, dispatch]);
+  }, [serverConfig, dispatch, apiWhitelistRequest, t]);
 
   // ── Toggle proxy on/off with Strict Authorization Check & Handshake Lock ────
   const handleToggle = useCallback(async () => {
