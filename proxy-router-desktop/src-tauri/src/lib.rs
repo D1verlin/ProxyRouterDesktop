@@ -8,7 +8,7 @@ use proxy::{
     kill_process, launch_app_with_proxy, launch_proxied_terminal, pick_exe_file,
     reset_adapter_dns, restore_network_defaults, set_active_dns, set_autostart,
     set_system_proxy, set_terminal_env_proxy, start_embedded_pac_server,
-    start_local_proxy_forwarder, test_dns_latency, update_pac_rules, update_tray_icon,
+    start_local_proxy_forwarder, test_dns_latency, test_upstream_proxy, update_pac_rules, update_tray_icon,
     update_upstream_proxy, window_close, window_minimize, window_toggle_maximize,
     TRAY_INACTIVE_BYTES,
 };
@@ -109,6 +109,7 @@ pub fn run() {
             get_public_ip,
             update_pac_rules,
             update_upstream_proxy,
+            test_upstream_proxy,
             pick_exe_file,
             check_running_processes,
             kill_process,

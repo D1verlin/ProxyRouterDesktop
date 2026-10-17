@@ -32,6 +32,8 @@ async function invoke(cmd, args = {}) {
       return 'Browser mock: PAC rules updated';
     case 'update_upstream_proxy':
       return 'Browser mock: upstream proxy updated';
+    case 'test_upstream_proxy':
+      return { ok: true, latency_ms: 45, protocol: args.proxyProtocol || 'http', target: '2.27.25.190:3128' };
     case 'launch_app_with_proxy':
       return Math.floor(Math.random() * 9000) + 1000;
     case 'launch_proxied_terminal':
@@ -284,6 +286,17 @@ export function useTauri() {
     return invoke('test_dns_latency', { servers });
   }, []);
 
+  const testUpstreamProxy = useCallback(async (proxyHost, proxyPort, proxyProtocol = 'http') => {
+    return invoke('test_upstream_proxy', {
+      proxyHost,
+      proxy_host: proxyHost,
+      proxyPort: Number(proxyPort),
+      proxy_port: Number(proxyPort),
+      proxyProtocol,
+      proxy_protocol: proxyProtocol,
+    });
+  }, []);
+
   const restoreNetworkDefaults = useCallback(async () => {
     return invoke('restore_network_defaults');
   }, []);
@@ -296,6 +309,7 @@ export function useTauri() {
     getNativeIp,
     updatePacRules,
     updateUpstreamProxy,
+    testUpstreamProxy,
     pickExeFile,
     checkRunningProcesses,
     killProcess,

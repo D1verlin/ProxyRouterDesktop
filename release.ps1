@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Tag = "v1.0.18",
+    [string]$Tag = "v1.0.19",
     [string]$RemoteUrl = "https://github.com/D1verlin/ProxyRouterDesktop.git",
     [switch]$SkipBuildCheck,
     [switch]$NoPush

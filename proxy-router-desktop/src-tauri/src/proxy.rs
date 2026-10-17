@@ -266,6 +266,10 @@ pub fn should_proxy_host(target: &str) -> bool {
     const CORE_AI_DOMAINS: &[&str] = &[
         "googleapis.com",
         "google.com",
+        "google",
+        "notebook.google",
+        "notebooklm.google",
+        "cloud.google",
         "deepmind.google",
         "gstatic.com",
         "googleusercontent.com",
@@ -279,6 +283,12 @@ pub fn should_proxy_host(target: &str) -> bool {
         "anthropic.com",
         "claude.ai",
         "claudeusercontent.com",
+        "deepl.com",
+        "linguee.com",
+        "perplexity.ai",
+        "groq.com",
+        "openrouter.ai",
+        "huggingface.co",
     ];
 
     for domain in CORE_AI_DOMAINS {
@@ -975,6 +985,99 @@ pub fn update_upstream_proxy(
     } else {
         Err("Failed to acquire write lock for UPSTREAM_PROXY".to_string())
     }
+}
+
+/// Tests upstream proxy connectivity, handshake and round-trip latency
+#[command]
+pub async fn test_upstream_proxy(
+    proxy_host: String,
+    proxy_port: u16,
+    proxy_protocol: Option<String>,
+) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let (eff_host, eff_port) = resolve_effective_proxy_target(&proxy_host, proxy_port);
+        let proto = UpstreamProtocol::from_str_opt(proxy_protocol.as_deref());
+        let target_addr = format!("{}:{}", eff_host, eff_port);
+
+        let start = std::time::Instant::now();
+        let addrs = resolve_target_addresses(&target_addr);
+        if addrs.is_empty() {
+            return Ok(serde_json::json!({
+                "ok": false,
+                "error": format!("Could not resolve host: {}", eff_host)
+            }));
+        }
+
+        let mut stream = None;
+        for addr in &addrs {
+            if let Ok(s) = TcpStream::connect_timeout(addr, Duration::from_millis(4000)) {
+                stream = Some(s);
+                break;
+            }
+        }
+
+        let mut stream = match stream {
+            Some(s) => s,
+            None => {
+                return Ok(serde_json::json!({
+                    "ok": false,
+                    "error": format!("Connection to {}:{} timed out (port unreachable or filtered)", eff_host, eff_port)
+                }));
+            }
+        };
+
+        let _ = stream.set_read_timeout(Some(Duration::from_millis(4000)));
+        let _ = stream.set_write_timeout(Some(Duration::from_millis(4000)));
+
+        match proto {
+            UpstreamProtocol::Http => {
+                let req = "CONNECT gemini.google.com:443 HTTP/1.1\r\nHost: gemini.google.com:443\r\n\r\n";
+                if let Err(e) = stream.write_all(req.as_bytes()) {
+                    return Ok(serde_json::json!({ "ok": false, "error": format!("Failed writing HTTP CONNECT: {}", e) }));
+                }
+                let mut reader = BufReader::new(stream);
+                let mut line = String::new();
+                if let Err(e) = reader.read_line(&mut line) {
+                    return Ok(serde_json::json!({ "ok": false, "error": format!("Failed reading proxy response: {}", e) }));
+                }
+                if !line.contains("200") {
+                    return Ok(serde_json::json!({ "ok": false, "error": format!("Proxy returned: {}", line.trim()) }));
+                }
+            }
+            UpstreamProtocol::Socks5 => {
+                if let Err(e) = socks5_handshake(&mut stream, "gemini.google.com:443") {
+                    return Ok(serde_json::json!({ "ok": false, "error": format!("SOCKS5 handshake failed: {}", e) }));
+                }
+            }
+            UpstreamProtocol::Https => {
+                let mut builder = native_tls::TlsConnector::builder();
+                builder.danger_accept_invalid_certs(true);
+                builder.danger_accept_invalid_hostnames(true);
+                let connector = match builder.build() {
+                    Ok(c) => c,
+                    Err(e) => return Ok(serde_json::json!({ "ok": false, "error": format!("TLS builder error: {}", e) })),
+                };
+                let mut tls_stream = match connector.connect(&eff_host, stream) {
+                    Ok(s) => s,
+                    Err(e) => return Ok(serde_json::json!({ "ok": false, "error": format!("TLS handshake failed: {}", e) })),
+                };
+                let req = "CONNECT gemini.google.com:443 HTTP/1.1\r\nHost: gemini.google.com:443\r\n\r\n";
+                if let Err(e) = tls_stream.write_all(req.as_bytes()) {
+                    return Ok(serde_json::json!({ "ok": false, "error": format!("Writing CONNECT over TLS failed: {}", e) }));
+                }
+            }
+        }
+
+        let elapsed = start.elapsed().as_millis() as u64;
+        Ok(serde_json::json!({
+            "ok": true,
+            "latency_ms": elapsed,
+            "protocol": format!("{:?}", proto).to_lowercase(),
+            "target": format!("{}:{}", eff_host, eff_port)
+        }))
+    })
+    .await
+    .map_err(|e| format!("Task execution error: {}", e))?
 }
 
 /// Updates PAC rules in memory from the Tauri UI

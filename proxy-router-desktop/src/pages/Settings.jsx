@@ -23,11 +23,19 @@ import {
   Sliders,
   Radio,
 } from 'lucide-react';
-import { useAppStore, getDefaultPortForProtocol, getEffectiveApiUrl, getEffectiveAuthToken } from '../store/useAppStore';
+import {
+  useAppStore,
+  getDefaultPortForProtocol,
+  getEffectiveApiUrl,
+  getEffectiveAuthToken,
+  getEffectiveProxyHost,
+  getEffectiveProxyProtocol,
+  getEffectiveProxyPort,
+} from '../store/useAppStore';
 import { useTauri } from '../hooks/useTauri';
 import styles from './Settings.module.css';
 
-const CURRENT_VERSION = '1.0.18';
+const CURRENT_VERSION = '1.0.19';
 const GITHUB_REPO = 'D1verlin/ProxyRouterDesktop';
 const GITHUB_REPO_URL = 'https://github.com/D1verlin/ProxyRouterDesktop';
 const GITHUB_RELEASES_URL = 'https://github.com/D1verlin/ProxyRouterDesktop/releases';
@@ -56,7 +64,7 @@ const openExternalLink = async (url) => {
 export default function Settings() {
   const { state, dispatch, t } = useAppStore();
   const { serverConfig, language, autostart, terminalProxyActive, isActive } = state;
-  const { getAutostartStatus, setAutostart, setTerminalEnvProxy, apiWhitelistRequest } = useTauri();
+  const { getAutostartStatus, setAutostart, setTerminalEnvProxy, apiWhitelistRequest, testUpstreamProxy } = useTauri();
 
   const [form, setForm] = useState({ ...serverConfig });
   const [showToken, setShowToken] = useState(false);
@@ -252,29 +260,52 @@ export default function Settings() {
     setTestResult(null);
     const targetUrl = getEffectiveApiUrl(form);
     const targetToken = getEffectiveAuthToken(form);
+    const proxyHost = getEffectiveProxyHost(form);
+    const proxyPort = getEffectiveProxyPort(form);
+    const proxyProto = getEffectiveProxyProtocol(form);
 
     try {
+      // 1. Whitelist API authorization check
       const data = await apiWhitelistRequest(
         `${targetUrl}/api/whitelist`,
         'GET',
         targetToken
       );
-
       const count = Array.isArray(data?.ips) ? data.ips.length : 0;
-      setTestResult({
-        type: 'success',
-        text:
-          language === 'ru'
-            ? `Успешно подключено! Токен валиден (в вайтлисте ${count} IP).`
-            : `Connection successful! Token is valid (${count} IPs in whitelist).`,
-      });
+
+      // 2. Upstream proxy handshake & latency check
+      let proxyStatus = null;
+      try {
+        proxyStatus = await testUpstreamProxy(proxyHost, proxyPort, proxyProto);
+      } catch (e) {
+        proxyStatus = { ok: false, error: e?.message || String(e) };
+      }
+
+      if (proxyStatus && proxyStatus.ok) {
+        setTestResult({
+          type: 'success',
+          text:
+            language === 'ru'
+              ? `Успешно! API авторизован (${count} IP в вайтлисте). Прокси ${proxyProto.toUpperCase()} :${proxyPort} доступен (${proxyStatus.latency_ms} мс).`
+              : `Connected! API authorized (${count} IPs). Proxy ${proxyProto.toUpperCase()} :${proxyPort} reachable (${proxyStatus.latency_ms}ms).`,
+        });
+      } else {
+        const failReason = proxyStatus?.error || 'unreachable';
+        setTestResult({
+          type: 'error',
+          text:
+            language === 'ru'
+              ? `API вайтлиста: ОК. НО порт прокси ${proxyProto.toUpperCase()} :${proxyPort} недоступен (${failReason}). Рекомендуем переключить протокол на HTTP (:3128) или SOCKS5 (:1080)!`
+              : `API whitelist: OK. BUT proxy ${proxyProto.toUpperCase()} :${proxyPort} unreachable (${failReason}). Recommended: switch protocol to HTTP (:3128) or SOCKS5 (:1080)!`,
+        });
+      }
     } catch (err) {
       setTestResult({
         type: 'error',
         text:
           language === 'ru'
-            ? `Ошибка подключения: ${err.message}`
-            : `Connection failed: ${err.message}`,
+            ? `Ошибка подключения к API: ${err.message}`
+            : `API connection failed: ${err.message}`,
       });
     } finally {
       setTestingConnection(false);

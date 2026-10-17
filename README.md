@@ -4,7 +4,7 @@
 
 ![Platform](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011%20(x64)-black?style=flat-square)
 ![Stack](https://img.shields.io/badge/Stack-Tauri%202%20%7C%20Rust%20%7C%20React%2019-black?style=flat-square)
-![Version](https://img.shields.io/badge/Version-v1.0.18-blue?style=flat-square)
+![Version](https://img.shields.io/badge/Version-v1.0.19-blue?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-black?style=flat-square)
 
 **Высокопроизводительный Windows-клиент для выборочного проксирования (Split Tunneling) доменов и процессов.**  
@@ -99,8 +99,8 @@ flowchart TD
 ### Установка готового приложения
 1. Перейдите в раздел [Релизы (Releases)](https://github.com/D1verlin/ProxyRouterDesktop/releases).
 2. Скачайте нужный установщик:
-   - **`Proxy Router Desktop_1.0.18_x64-setup.exe`** (рекомендуемый инсталлятор)
-   - или **`Proxy Router Desktop_1.0.18_x64_en-US.msi`** (пакет Windows Installer)
+   - **`Proxy Router Desktop_1.0.19_x64-setup.exe`** (рекомендуемый инсталлятор)
+   - или **`Proxy Router Desktop_1.0.19_x64_en-US.msi`** (пакет Windows Installer)
 3. Запустите инсталлятор и следуйте подсказкам на экране.
 
 ---
