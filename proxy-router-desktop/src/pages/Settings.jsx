@@ -27,7 +27,7 @@ import { useAppStore, getDefaultPortForProtocol } from '../store/useAppStore';
 import { useTauri } from '../hooks/useTauri';
 import styles from './Settings.module.css';
 
-const CURRENT_VERSION = '1.0.16';
+const CURRENT_VERSION = '1.0.17';
 const GITHUB_REPO = 'D1verlin/ProxyRouterDesktop';
 const GITHUB_REPO_URL = 'https://github.com/D1verlin/ProxyRouterDesktop';
 const GITHUB_RELEASES_URL = 'https://github.com/D1verlin/ProxyRouterDesktop/releases';
@@ -266,7 +266,7 @@ export default function Settings() {
 
     return {
       app: 'ProxyRouter',
-      version: '1.0.16',
+      version: '1.0.17',
       apiUrl: form.apiUrl,
       authToken: form.authToken,
       proxyHost: host,
