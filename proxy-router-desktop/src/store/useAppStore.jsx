@@ -432,3 +432,9 @@ export function getEffectiveProxyHost(serverConfig) {
   } catch {}
   return '2.27.25.190';
 }
+
+export function getEffectiveProxyPort(serverConfig) {
+  const p = Number(serverConfig?.proxyPort);
+  if (p > 0 && p <= 65535) return p;
+  return 3128;
+}

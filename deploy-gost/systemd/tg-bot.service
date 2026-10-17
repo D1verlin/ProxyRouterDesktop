@@ -1,0 +1,16 @@
+[Unit]
+Description=Proxy Router Telegram Bot & Quick IP Auth Web
+After=network.target whitelist-api.service
+Wants=whitelist-api.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/proxy-tg-bot
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /opt/proxy-tg-bot/bot.py
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

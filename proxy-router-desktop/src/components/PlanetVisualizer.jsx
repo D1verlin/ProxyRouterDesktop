@@ -158,7 +158,7 @@ export default function PlanetVisualizer({
     const proxy = {
       id: 'proxy',
       name: t('planet.proxy', 'Proxy'),
-      subtext: 'Squid Relay :3128',
+      subtext: 'Proxy Relay',
       lat: toRad(48.8),
       lon: toRad(2.3),
       type: 'proxy',

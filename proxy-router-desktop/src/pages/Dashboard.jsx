@@ -6,7 +6,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertCircle, ArrowRight } from 'lucide-react';
-import { useAppStore, getEffectiveProxyHost } from '../store/useAppStore';
+import { useAppStore, getEffectiveProxyHost, getEffectiveProxyPort } from '../store/useAppStore';
 import { useTauri } from '../hooks/useTauri';
 import { usePacServer } from '../hooks/usePacServer';
 import PlanetVisualizer from '../components/PlanetVisualizer';
@@ -172,7 +172,7 @@ export default function Dashboard() {
 
         await updateConfig({
           proxyHost,
-          proxyPort: 3128,
+          proxyPort: getEffectiveProxyPort(serverConfig),
           enabledHosts,
           customDomains,
         });

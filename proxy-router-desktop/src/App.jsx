@@ -16,7 +16,7 @@ import DnsSettings from './pages/DnsSettings';
 import { useEffect } from 'react';
 import ActivityLog from './pages/ActivityLog';
 import Settings from './pages/Settings';
-import { useAppStore, getEffectiveProxyHost } from './store/useAppStore';
+import { useAppStore, getEffectiveProxyHost, getEffectiveProxyPort } from './store/useAppStore';
 import { usePacServer } from './hooks/usePacServer';
 import { useTauri } from './hooks/useTauri';
 import styles from './App.module.css';
@@ -35,7 +35,7 @@ function PacSync() {
 
     updateConfig({
       proxyHost,
-      proxyPort: 3128,
+      proxyPort: getEffectiveProxyPort(serverConfig),
       enabledHosts,
       customDomains: customDomains || [],
     }).catch(() => {});

@@ -1,0 +1,20 @@
+[Unit]
+Description=Proxy Router Whitelist API (Node.js)
+After=network.target gost.service
+Wants=gost.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/proxy-whitelist-api
+Environment=NODE_ENV=production
+Environment=PORT=1135
+Environment=IP_MANAGER_SCRIPT=/usr/local/bin/ip_manager.sh
+Environment=WHITELIST_FILE=/etc/gost/whitelist.txt
+ExecStart=/usr/bin/node /opt/proxy-whitelist-api/index.js
+Restart=always
+RestartSec=3s
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

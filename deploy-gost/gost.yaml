@@ -1,0 +1,50 @@
+# ==============================================================================
+# GOST v3 (GO Simple Tunnel) - Production Configuration for Proxy Router
+# Multi-protocol high performance tunnel:
+#   - Port 3128: Standard HTTP CONNECT proxy (Fast, low-latency)
+#   - Port 8443: TLS-Encrypted HTTPS CONNECT proxy (Anti-DPI / Censorship bypass)
+#   - Port 1080: SOCKS5 proxy
+# ==============================================================================
+
+services:
+  # 1. Standard HTTP CONNECT proxy on port 3128 (Drop-in replacement for Squid)
+  - name: service-http
+    addr: ":3128"
+    handler:
+      type: http
+      metadata:
+        keepalive: true
+        readTimeout: 30s
+        writeTimeout: 30s
+    listener:
+      type: tcp
+
+  # 2. TLS-encrypted HTTPS proxy on port 8443 (Protects SNI / CONNECT headers from DPI)
+  - name: service-https
+    addr: ":8443"
+    handler:
+      type: http
+      metadata:
+        keepalive: true
+        readTimeout: 30s
+        writeTimeout: 30s
+    listener:
+      type: tls
+      tls:
+        certFile: "/etc/gost/certs/cert.pem"
+        keyFile: "/etc/gost/certs/key.pem"
+
+  # 3. Fast SOCKS5 proxy on port 1080
+  - name: service-socks5
+    addr: ":1080"
+    handler:
+      type: socks5
+      metadata:
+        readTimeout: 30s
+        writeTimeout: 30s
+    listener:
+      type: tcp
+
+log:
+  level: warn
+  format: text

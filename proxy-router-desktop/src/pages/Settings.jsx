@@ -256,7 +256,7 @@ export default function Settings() {
       apiUrl: form.apiUrl,
       authToken: form.authToken,
       proxyHost: host,
-      proxyPort: port,
+      proxyPort: form.proxyPort || port || 3128,
       exportedAt: new Date().toISOString(),
     };
   };
@@ -303,6 +303,7 @@ export default function Settings() {
       const updated = {
         apiUrl: parsed.apiUrl || form.apiUrl,
         authToken: parsed.authToken || form.authToken,
+        proxyPort: parsed.proxyPort || form.proxyPort || 3128,
       };
 
       setForm(updated);
@@ -521,6 +522,27 @@ export default function Settings() {
               {showToken ? <EyeOff size={14} /> : <Eye size={14} />}
             </button>
           </div>
+        </div>
+
+        {/* Upstream Proxy Port */}
+        <div className={styles.field}>
+          <label className={styles.label} htmlFor="proxyPort">
+            {t('settings.proxyPortLabel', 'Upstream Proxy Port')}
+          </label>
+          <input
+            id="proxyPort"
+            type="number"
+            className="input"
+            placeholder="3128"
+            value={form.proxyPort ?? 3128}
+            onChange={(e) => handleChange('proxyPort', parseInt(e.target.value, 10) || 3128)}
+          />
+          <p className={styles.hint}>
+            {t(
+              'settings.proxyPortHint',
+              'Port of the proxy daemon on the remote server (3128 for GOST / Squid, 8443 for HTTPS/TLS).'
+            )}
+          </p>
         </div>
 
         {/* PAC server port info */}
