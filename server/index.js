@@ -121,8 +121,9 @@ app.use((req, _res, next) => {
 
 // Auth middleware
 function requireAuth(req, res, next) {
-  const header = req.headers['authorization'] ?? '';
-  const token  = header.startsWith('Bearer ') ? header.slice(7) : header;
+  const header = (req.headers['authorization'] ?? '').trim();
+  let token  = header.startsWith('Bearer ') ? header.slice(7) : header;
+  token = token.replace(/^Bearer\s+/i, '').trim();
   const auth   = isTokenValid(token);
 
   if (!auth.valid) {

@@ -12,6 +12,8 @@ import {
   getEffectiveProxyPort,
   getEffectiveProxyProtocol,
   getEffectiveIgnoreTls,
+  getEffectiveApiUrl,
+  getEffectiveAuthToken,
 } from '../store/useAppStore';
 import { useTauri } from '../hooks/useTauri';
 import { usePacServer } from '../hooks/usePacServer';
@@ -77,8 +79,9 @@ export default function Dashboard() {
 
   // ── Whitelist current IP via server API (returns true if successful) ────────
   const whitelistIp = useCallback(async (ip) => {
-    const normalizedUrl = (serverConfig.apiUrl || '').replace(/\/+$/, '');
-    if (!ip || !normalizedUrl || !serverConfig.authToken) {
+    const normalizedUrl = getEffectiveApiUrl(serverConfig);
+    const token = getEffectiveAuthToken(serverConfig);
+    if (!ip || !normalizedUrl || !token) {
       dispatch({
         type: 'ADD_LOG_ENTRY',
         payload: { category: 'AUTH', level: 'warn', msg: 'Skipping whitelist: Server URL or Token not configured in Settings' },
@@ -94,7 +97,7 @@ export default function Dashboard() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${serverConfig.authToken}`,
+          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({ ip }),
         signal: AbortSignal.timeout(8000),

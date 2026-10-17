@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { RefreshCw, Plus, Trash2, CheckCircle2, ShieldCheck } from 'lucide-react';
-import { useAppStore } from '../store/useAppStore';
+import { useAppStore, getEffectiveApiUrl, getEffectiveAuthToken } from '../store/useAppStore';
 import styles from './Whitelist.module.css';
 
 export default function Whitelist() {
@@ -16,10 +16,11 @@ export default function Whitelist() {
   const [manualIp, setManualIp] = useState('');
   const [notice, setNotice] = useState(null);
 
-  const normalizedUrl = (serverConfig.apiUrl || '').replace(/\/+$/, '');
+  const normalizedUrl = getEffectiveApiUrl(serverConfig);
+  const authToken = getEffectiveAuthToken(serverConfig);
 
   const fetchWhitelist = useCallback(async () => {
-    if (!normalizedUrl || !serverConfig.authToken) {
+    if (!normalizedUrl || !authToken) {
       setNotice({
         type: 'warn',
         text: t(
@@ -34,7 +35,7 @@ export default function Whitelist() {
     setNotice(null);
     try {
       const res = await fetch(`${normalizedUrl}/api/whitelist`, {
-        headers: { Authorization: `Bearer ${serverConfig.authToken}` },
+        headers: { Authorization: `Bearer ${authToken}` },
         signal: AbortSignal.timeout(5000),
       });
 
@@ -81,7 +82,7 @@ export default function Whitelist() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${serverConfig.authToken}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify({ ip: target }),
         signal: AbortSignal.timeout(6000),
@@ -129,7 +130,7 @@ export default function Whitelist() {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${serverConfig.authToken}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify({ ip: ipToRemove }),
         signal: AbortSignal.timeout(6000),

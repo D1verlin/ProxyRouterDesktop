@@ -23,7 +23,7 @@ import {
   Sliders,
   Radio,
 } from 'lucide-react';
-import { useAppStore, getDefaultPortForProtocol } from '../store/useAppStore';
+import { useAppStore, getDefaultPortForProtocol, getEffectiveApiUrl, getEffectiveAuthToken } from '../store/useAppStore';
 import { useTauri } from '../hooks/useTauri';
 import styles from './Settings.module.css';
 
@@ -61,6 +61,8 @@ export default function Settings() {
   const [form, setForm] = useState({ ...serverConfig });
   const [showToken, setShowToken] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [testResult, setTestResult] = useState(null);
 
   // Profile import/export states
   const [importText, setImportText] = useState('');
@@ -245,8 +247,59 @@ export default function Settings() {
     });
   };
 
+  const handleTestConnection = async () => {
+    setTestingConnection(true);
+    setTestResult(null);
+    const targetUrl = getEffectiveApiUrl(form);
+    const targetToken = getEffectiveAuthToken(form);
+
+    try {
+      const res = await fetch(`${targetUrl}/api/whitelist`, {
+        headers: { Authorization: `Bearer ${targetToken}` },
+        signal: AbortSignal.timeout(5000),
+      });
+
+      if (res.status === 401) {
+        throw new Error(
+          language === 'ru'
+            ? 'Токен отклонен сервером (401 Unauthorized). Проверьте ключ!'
+            : 'Token rejected by server (401 Unauthorized). Check your key!'
+        );
+      }
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
+
+      const data = await res.json();
+      const count = Array.isArray(data.ips) ? data.ips.length : 0;
+      setTestResult({
+        type: 'success',
+        text:
+          language === 'ru'
+            ? `Успешно подключено! Токен валиден (в вайтлисте ${count} IP).`
+            : `Connection successful! Token is valid (${count} IPs in whitelist).`,
+      });
+    } catch (err) {
+      setTestResult({
+        type: 'error',
+        text:
+          language === 'ru'
+            ? `Ошибка подключения: ${err.message}`
+            : `Connection failed: ${err.message}`,
+      });
+    } finally {
+      setTestingConnection(false);
+    }
+  };
+
   const handleSave = () => {
-    dispatch({ type: 'UPDATE_SERVER_CONFIG', payload: form });
+    const cleanForm = {
+      ...form,
+      apiUrl: form.apiUrl ? getEffectiveApiUrl(form) : form.apiUrl,
+      authToken: (form.authToken || '').trim().replace(/^Bearer\s+/i, ''),
+    };
+    setForm(cleanForm);
+    dispatch({ type: 'UPDATE_SERVER_CONFIG', payload: cleanForm });
     dispatch({
       type: 'ADD_LOG_ENTRY',
       payload: { category: 'SYS', level: 'info', msg: 'Server configuration updated' },
@@ -528,7 +581,7 @@ export default function Settings() {
               className="input"
               placeholder={t('settings.tokenPlaceholder', 'Bearer authorization key')}
               value={form.authToken}
-              onChange={(e) => handleChange('authToken', e.target.value)}
+              onChange={(e) => handleChange('authToken', e.target.value.replace(/^Bearer\s+/i, ''))}
             />
             <button
               type="button"
@@ -650,13 +703,35 @@ export default function Settings() {
           </div>
         </div>
 
-        {/* Save */}
+        {/* Save & Test Connection */}
         <div className={styles.actions}>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={handleTestConnection}
+            disabled={testingConnection}
+          >
+            <RefreshCw size={14} className={testingConnection ? 'animate-spin' : ''} />
+            {testingConnection
+              ? t('settings.btnTestingConnection', 'Testing...')
+              : t('settings.btnTestConnection', 'Test Connection')}
+          </button>
           <button type="button" className="btn-primary" onClick={handleSave}>
             <Save size={14} />
             {saved ? t('common.saved', 'Saved') : t('settings.btnSave', 'Save Credentials')}
           </button>
         </div>
+
+        {testResult && (
+          <div
+            className={`${styles.testNotice} ${
+              testResult.type === 'success' ? styles.testSuccess : styles.testError
+            }`}
+          >
+            {testResult.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+            <span>{testResult.text}</span>
+          </div>
+        )}
 
         <hr className={styles.separator} />
 

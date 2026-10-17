@@ -104,9 +104,10 @@ app.use(express.json());
 
 // Auth middleware
 function requireAuth(req, res, next) {
-  const header = req.headers['authorization'] ?? '';
+  const header = (req.headers['authorization'] ?? '').trim();
   const match = header.match(/^Bearer\s+(.+)$/i);
-  const token = match ? match[1].trim() : '';
+  let token = match ? match[1].trim() : header;
+  token = token.replace(/^Bearer\s+/i, '').trim();
 
   const authResult = isTokenValid(token);
   if (!authResult) {

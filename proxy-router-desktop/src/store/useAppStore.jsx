@@ -271,8 +271,8 @@ const initialState = {
 
   /** Server configuration */
   serverConfig: {
-    apiUrl:          'http://your-server-ip:1135',
-    authToken:       '',
+    apiUrl:          'http://2.27.25.190:1135',
+    authToken:       '082c94abc5fb19fe949fb3798020bd3a5d9daa1f6e5bc076',
     proxyPort:       3128,
     proxyProtocol:   'http',
     ignoreTlsErrors: true,
@@ -422,6 +422,26 @@ export function useAppStore() {
   const ctx = useContext(AppContext);
   if (!ctx) throw new Error('useAppStore must be used within AppProvider');
   return ctx;
+}
+
+export function getEffectiveApiUrl(serverConfig) {
+  let url = (serverConfig?.apiUrl || '').trim();
+  if (!url || url.includes('your-server-ip')) {
+    url = 'http://2.27.25.190:1135';
+  }
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    url = `http://${url}`;
+  }
+  return url.replace(/\/api\/whitelist\/?$/i, '').replace(/\/api\/?$/i, '').replace(/\/+$/, '');
+}
+
+export function getEffectiveAuthToken(serverConfig) {
+  let token = (serverConfig?.authToken || '').trim();
+  token = token.replace(/^Bearer\s+/i, '').trim();
+  if (!token) {
+    token = '082c94abc5fb19fe949fb3798020bd3a5d9daa1f6e5bc076';
+  }
+  return token;
 }
 
 export function getEffectiveProxyHost(serverConfig) {
