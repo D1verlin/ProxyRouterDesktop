@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=root
-ExecStartPre=/usr/local/bin/ip_manager.sh restore
+ExecStartPre=-/usr/local/bin/ip_manager.sh restore
 ExecStart=/usr/local/bin/gost -C /etc/gost/gost.yaml
 Restart=always
 RestartSec=3s

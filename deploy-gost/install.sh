@@ -32,13 +32,14 @@ log "================================================================"
 log "Обновление репозиториев и установка системных пакетов..."
 apt-get update -y
 PKGS=(curl tar openssl nftables ca-certificates python3 python3-pip)
+apt-get install -y --no-install-recommends "${PKGS[@]}"
+
 if ! command -v node &>/dev/null; then
-    PKGS+=(nodejs)
+    apt-get install -y --no-install-recommends nodejs || true
 fi
 if ! command -v npm &>/dev/null; then
-    PKGS+=(npm)
+    apt-get install -y --no-install-recommends npm || true
 fi
-apt-get install -y --no-install-recommends "${PKGS[@]}"
 
 # 3. Остановка и отключение старого Squid
 if systemctl is-active --quiet squid 2>/dev/null || systemctl is-enabled --quiet squid 2>/dev/null; then

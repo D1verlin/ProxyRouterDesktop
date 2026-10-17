@@ -121,13 +121,13 @@ case "$ACTION" in
         ensure_file_and_set
         count=0
         if [[ -f "$WHITELIST_FILE" ]]; then
-            while IFS= read -r entry; do
+            while IFS= read -r entry || [[ -n "$entry" ]]; do
                 trimmed=$(echo "$entry" | xargs)
                 if [[ -n "$trimmed" && ! "$trimmed" =~ ^# ]]; then
                     if command -v nft &>/dev/null; then
                         nft add element inet proxy_filter whitelist "{ $trimmed }" 2>/dev/null || true
                     fi
-                    ((count++))
+                    count=$((count + 1))
                 fi
             done < "$WHITELIST_FILE"
         fi
