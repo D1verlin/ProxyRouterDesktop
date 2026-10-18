@@ -24,8 +24,36 @@ from aiogram.types import (
 )
 
 # ── Configuration ─────────────────────────────────────────────────────────────
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8679377235:AAEas664Uqsp9TiqOsDX0aQDXaALEqJx88Y")
-ADMIN_IDS = [int(i.strip()) for i in os.getenv("ADMIN_IDS", "795925133").split(",") if i.strip()]
+BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
+
+# Attempt to load local .env if present
+env_file = os.path.join(os.path.dirname(__file__), ".env")
+if os.path.exists(env_file):
+    try:
+        with open(env_file, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                k = k.strip()
+                v = v.strip().strip('"').strip("'")
+                if k == "BOT_TOKEN" and not BOT_TOKEN:
+                    BOT_TOKEN = v
+                elif k == "ADMIN_IDS" and "ADMIN_IDS" not in os.environ:
+                    os.environ["ADMIN_IDS"] = v
+                elif k == "SERVER_HOST" and "SERVER_HOST" not in os.environ:
+                    os.environ["SERVER_HOST"] = v
+                elif k == "WEB_PORT" and "WEB_PORT" not in os.environ:
+                    os.environ["WEB_PORT"] = v
+    except Exception as e:
+        print(f"Warning: Failed to read .env file: {e}")
+
+if not BOT_TOKEN:
+    raise SystemExit("CRITICAL ERROR: BOT_TOKEN is not defined! Set BOT_TOKEN in .env or environment variable.")
+
+ADMIN_IDS_RAW = os.getenv("ADMIN_IDS", "").strip()
+ADMIN_IDS = [int(i.strip()) for i in ADMIN_IDS_RAW.split(",") if i.strip().isdigit()]
 
 # Path to the universal nftables ip_manager.sh script
 SCRIPT_PATH = os.getenv("IP_MANAGER_SCRIPT", "/usr/local/bin/ip_manager.sh")
