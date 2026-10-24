@@ -1,13 +1,23 @@
 .windowShell {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  width: 100vw;
   overflow: hidden;
   background: var(--bg-app);
+  backdrop-filter: var(--window-backdrop, none);
+  -webkit-backdrop-filter: var(--window-backdrop, none);
   border-radius: 0;
   border: none;
+  margin: 0;
+  padding: 0;
   box-sizing: border-box;
+  transition: background 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .bodyLayout {

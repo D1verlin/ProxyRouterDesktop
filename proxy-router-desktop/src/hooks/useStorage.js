@@ -40,6 +40,9 @@ export function useStorageHydrate() {
       if (saved.language === 'en' || saved.language === 'ru') {
         dispatch({ type: 'SET_LANGUAGE', payload: saved.language });
       }
+      if (saved.customization && typeof saved.customization === 'object') {
+        dispatch({ type: 'SET_CUSTOMIZATION', payload: saved.customization });
+      }
     } catch {
       localStorage.removeItem(STORAGE_KEY);
     }
@@ -59,10 +62,11 @@ export function useStoragePersist() {
         routedApps:          state.routedApps,
         terminalProxyActive: state.terminalProxyActive,
         language:            state.language || 'en',
+        customization:       state.customization,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
     } catch {
       // quota exceeded
     }
-  }, [state.serverConfig, state.customDomains, state.presetSites, state.routedApps, state.terminalProxyActive, state.language]);
+  }, [state.serverConfig, state.customDomains, state.presetSites, state.routedApps, state.terminalProxyActive, state.language, state.customization]);
 }

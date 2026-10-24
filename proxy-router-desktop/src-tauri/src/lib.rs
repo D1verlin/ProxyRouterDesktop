@@ -10,6 +10,7 @@ use proxy::{
     set_system_proxy, set_terminal_env_proxy, start_embedded_pac_server,
     start_local_proxy_forwarder, test_dns_latency, test_upstream_proxy, update_pac_rules, update_tray_icon,
     update_upstream_proxy, window_close, window_minimize, window_toggle_maximize,
+    set_window_effect,
     TRAY_INACTIVE_BYTES,
 };
 
@@ -129,6 +130,7 @@ pub fn run() {
             window_minimize,
             window_toggle_maximize,
             window_close,
+            set_window_effect,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

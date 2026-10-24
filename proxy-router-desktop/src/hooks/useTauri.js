@@ -62,6 +62,8 @@ async function invoke(cmd, args = {}) {
       return (args.servers || []).map(s => ({ server: s, latency_ms: Math.floor(Math.random() * 25) + 8, error: null }));
     case 'restore_network_defaults':
       return 'Browser mock: network defaults restored';
+    case 'set_window_effect':
+      return `Browser mock: window effect ${args.effect}`;
     case 'pick_exe_file':
       return null;
     case 'check_running_processes':
@@ -301,6 +303,10 @@ export function useTauri() {
     return invoke('restore_network_defaults');
   }, []);
 
+  const setWindowEffect = useCallback(async (effect, color = null) => {
+    return invoke('set_window_effect', { effect, color });
+  }, []);
+
   return {
     setSystemProxy,
     clearSystemProxy,
@@ -329,6 +335,7 @@ export function useTauri() {
     resetAdapterDns,
     testDnsLatency,
     restoreNetworkDefaults,
+    setWindowEffect,
     isTauri,
   };
 }

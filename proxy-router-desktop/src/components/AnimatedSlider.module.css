@@ -1,0 +1,197 @@
+/* AnimatedSlider.module.css — Dark Monolith Minimalist Animated Slider */
+
+.sliderGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.labelCol {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+
+.labelRow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.fieldIcon {
+  color: var(--text-sec);
+  flex-shrink: 0;
+}
+
+.label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  letter-spacing: 0.01em;
+}
+
+.desc {
+  font-size: 11.5px;
+  color: var(--text-sec);
+  line-height: 1.4;
+}
+
+.valueBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 10px;
+  border-radius: var(--r-sm);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+              background 0.18s ease,
+              border-color 0.18s ease;
+  flex-shrink: 0;
+}
+
+.valueBadgeActive {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.28);
+  transform: translateY(-1px) scale(1.04);
+}
+
+.monoValue {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #ffffff;
+  letter-spacing: 0.02em;
+}
+
+.unit {
+  font-size: 11px;
+  color: var(--text-sec);
+  margin-left: 2px;
+  font-weight: 400;
+}
+
+/* Slider Track Wrapper */
+.trackWrapper {
+  position: relative;
+  width: 100%;
+  height: 24px;
+  display: flex;
+  align-items: center;
+}
+
+/* Native Range input with WebKit / Blink styles */
+.rangeInput {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 99px;
+  outline: none;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+  background: linear-gradient(
+    to right,
+    #ffffff 0%,
+    #ffffff var(--fill-pct),
+    rgba(255, 255, 255, 0.1) var(--fill-pct),
+    rgba(255, 255, 255, 0.1) 100%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  transition: background 0.12s ease, border-color 0.15s ease;
+}
+
+.rangeInput:hover {
+  border-color: var(--border-hover);
+}
+
+.rangeInput:focus-visible {
+  border-color: #ffffff;
+}
+
+/* Animated Thumb */
+.rangeInput::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid #121212;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.55);
+  cursor: grab;
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+              background 0.15s ease,
+              border-color 0.15s ease;
+}
+
+.rangeInput:hover::-webkit-slider-thumb {
+  transform: scale(1.22);
+  background: #ffffff;
+  border-color: #000000;
+}
+
+.rangeInput:active::-webkit-slider-thumb {
+  transform: scale(1.36);
+  cursor: grabbing;
+  background: #ffffff;
+}
+
+/* Presets row */
+.presetsRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding-top: 2px;
+}
+
+.presetBtn {
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-sec);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1),
+              background 0.15s ease,
+              color 0.15s ease,
+              border-color 0.15s ease;
+}
+
+.presetBtn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.07);
+  border-color: var(--border-hover);
+  transform: translateY(-1px);
+}
+
+.presetBtn:active {
+  transform: translateY(0) scale(0.97);
+}
+
+.presetBtnActive {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.28);
+}

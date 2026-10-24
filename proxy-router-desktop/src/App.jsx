@@ -98,6 +98,58 @@ function TraySync() {
   return null;
 }
 
+function CustomizationSync() {
+  const { state } = useAppStore();
+  const { customization } = state;
+  const { setWindowEffect } = useTauri();
+
+  useEffect(() => {
+    const { bgMode = 'default', opacity = 75, blur = 16 } = customization || {};
+    const root = document.documentElement;
+
+    if (bgMode === 'acrylic') {
+      const alpha = Math.max(0.15, Math.min(0.98, opacity / 100));
+      const blurPx = Math.max(0, Math.min(50, blur));
+      const alphaSurface2 = Math.min(0.95, alpha + 0.08).toFixed(2);
+      const alphaSurface3 = Math.min(0.95, alpha + 0.04).toFixed(2);
+
+      root.style.setProperty('--bg-app', `rgba(18, 18, 18, ${alpha.toFixed(2)})`);
+      root.style.setProperty('--bg-surface', `rgba(18, 18, 18, ${alpha.toFixed(2)})`);
+      root.style.setProperty('--bg-surface-2', `rgba(28, 28, 28, ${alphaSurface2})`);
+      root.style.setProperty('--bg-surface-3', `rgba(22, 22, 22, ${alphaSurface3})`);
+      if (blurPx === 0) {
+        root.style.setProperty('--window-backdrop', 'none');
+      } else {
+        root.style.setProperty('--window-backdrop', `blur(${blurPx}px) saturate(140%)`);
+      }
+      root.style.setProperty(
+        '--border',
+        `rgba(255, 255, 255, ${Math.max(0.06, 0.12 - (1 - alpha) * 0.04).toFixed(2)})`
+      );
+      root.setAttribute('data-theme-mode', 'acrylic');
+
+      const nativeAlpha = Math.round(alpha * 255);
+      if (blurPx === 0) {
+        setWindowEffect('none').catch(() => {});
+      } else {
+        setWindowEffect('acrylic', [18, 18, 18, nativeAlpha]).catch(() => {});
+      }
+    } else {
+      root.style.removeProperty('--bg-app');
+      root.style.removeProperty('--bg-surface');
+      root.style.removeProperty('--bg-surface-2');
+      root.style.removeProperty('--bg-surface-3');
+      root.style.removeProperty('--window-backdrop');
+      root.style.removeProperty('--border');
+      root.setAttribute('data-theme-mode', 'default');
+
+      setWindowEffect('none').catch(() => {});
+    }
+  }, [customization, setWindowEffect]);
+
+  return null;
+}
+
 function MainLayout() {
   useStorageHydrate();
   useStoragePersist();
@@ -106,6 +158,7 @@ function MainLayout() {
     <HashRouter>
       <PacSync />
       <TraySync />
+      <CustomizationSync />
       <div className={styles.windowShell}>
         {/* Custom Window Titlebar & Native Window Controls */}
         <Titlebar />

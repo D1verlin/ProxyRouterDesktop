@@ -2,10 +2,12 @@
   height: 32px;
   width: 100%;
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: space-between;
-  background: var(--bg-app);
-  border-bottom: none;
+  background: transparent;
+  border: none;
+  outline: none;
+  margin: 0;
   user-select: none;
   -webkit-app-region: drag;
   flex-shrink: 0;
@@ -17,12 +19,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.logo {
-  width: 16px;
-  height: 16px;
-  display: block;
+  height: 100%;
 }
 
 .title {
@@ -39,23 +36,26 @@
 
 .controls {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   height: 100%;
   -webkit-app-region: no-drag;
 }
 
 .controlBtn {
   width: 44px;
-  height: 31px;
+  height: 100%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   background: transparent;
   border: none;
+  margin: 0;
+  padding: 0;
   color: var(--text-sec);
   cursor: pointer;
   transition: background 0.1s ease, color 0.1s ease;
   outline: none;
+  box-sizing: border-box;
 }
 
 .controlBtn:hover {

@@ -284,6 +284,13 @@ const initialState = {
   /** Windows system autostart (OFF by default) */
   autostart: false,
 
+  /** Customization & UI Theme (Acrylic background, opacity & blur) */
+  customization: {
+    bgMode: 'default', // 'default' | 'acrylic'
+    opacity: 75,       // 20 .. 95 %
+    blur: 16,          // 0 .. 40 px
+  },
+
   /** Activity log entries */
   log: [],
 };
@@ -388,6 +395,15 @@ function reducer(state, action) {
 
     case 'SET_AUTOSTART':
       return { ...state, autostart: action.payload };
+
+    case 'SET_CUSTOMIZATION':
+      return {
+        ...state,
+        customization: {
+          ...state.customization,
+          ...action.payload,
+        },
+      };
 
     case 'CLEAR_LOG':
       return { ...state, log: [] };

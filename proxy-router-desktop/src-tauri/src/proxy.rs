@@ -2263,6 +2263,44 @@ pub fn window_close(window: Window) -> Result<(), String> {
     window.hide().map_err(|e| e.to_string())
 }
 
+#[command]
+pub fn set_window_effect(window: Window, effect: String, color: Option<(u8, u8, u8, u8)>) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use window_vibrancy::{apply_acrylic, apply_blur, apply_mica, clear_acrylic, clear_blur, clear_mica};
+        match effect.as_str() {
+            "acrylic" => {
+                let _ = clear_blur(&window);
+                let _ = clear_mica(&window);
+                if let Err(e) = apply_acrylic(&window, color) {
+                    eprintln!("[set_window_effect] apply_acrylic: {e}");
+                }
+            }
+            "blur" => {
+                let _ = clear_acrylic(&window);
+                let _ = clear_mica(&window);
+                if let Err(e) = apply_blur(&window, color) {
+                    eprintln!("[set_window_effect] apply_blur: {e}");
+                }
+            }
+            "mica" => {
+                let _ = clear_acrylic(&window);
+                let _ = clear_blur(&window);
+                if let Err(e) = apply_mica(&window, Some(true)) {
+                    eprintln!("[set_window_effect] apply_mica: {e}");
+                }
+            }
+            _ => {
+                let _ = clear_acrylic(&window);
+                let _ = clear_blur(&window);
+                let _ = clear_mica(&window);
+            }
+        }
+    }
+    Ok(())
+}
+
+
 // ── Registry & WinInet helpers ──────────────────────────────────────────────
 
 fn apply_windows_system_proxy(enabled: bool) -> Result<(), String> {

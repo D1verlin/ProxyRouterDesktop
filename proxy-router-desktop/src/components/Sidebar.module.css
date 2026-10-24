@@ -1,7 +1,7 @@
 .rail {
   width: 56px;
   flex-shrink: 0;
-  background: var(--bg-app);
+  background: transparent;
   border-right: none;
   display: flex;
   flex-direction: column;

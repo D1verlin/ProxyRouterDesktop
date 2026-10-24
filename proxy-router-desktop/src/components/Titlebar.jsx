@@ -6,7 +6,6 @@
 import { Minus, Square, X } from 'lucide-react';
 import { useTauri } from '../hooks/useTauri';
 import { useAppStore } from '../store/useAppStore';
-import logoUrl from '../assets/logo.svg';
 import styles from './Titlebar.module.css';
 
 export default function Titlebar() {
@@ -17,7 +16,6 @@ export default function Titlebar() {
     <header className={styles.titlebar} data-tauri-drag-region>
       {/* Left: App Title */}
       <div className={styles.left} data-tauri-drag-region>
-        <img src={logoUrl} alt="" className={styles.logo} draggable={false} data-tauri-drag-region />
         <span className={styles.title} data-tauri-drag-region>
           Proxy Router
         </span>

@@ -22,7 +22,11 @@ import {
   ExternalLink,
   Sliders,
   Radio,
+  Palette,
+  Layers,
+  Sparkles,
 } from 'lucide-react';
+import AnimatedSlider from '../components/AnimatedSlider';
 import {
   useAppStore,
   getDefaultPortForProtocol,
@@ -35,7 +39,7 @@ import {
 import { useTauri } from '../hooks/useTauri';
 import styles from './Settings.module.css';
 
-const CURRENT_VERSION = '1.0.19';
+const CURRENT_VERSION = '1.0.20';
 const GITHUB_REPO = 'D1verlin/ProxyRouterDesktop';
 const GITHUB_REPO_URL = 'https://github.com/D1verlin/ProxyRouterDesktop';
 const GITHUB_RELEASES_URL = 'https://github.com/D1verlin/ProxyRouterDesktop/releases';
@@ -63,7 +67,7 @@ const openExternalLink = async (url) => {
 
 export default function Settings() {
   const { state, dispatch, t } = useAppStore();
-  const { serverConfig, language, autostart, terminalProxyActive, isActive } = state;
+  const { serverConfig, language, autostart, terminalProxyActive, isActive, customization } = state;
   const { getAutostartStatus, setAutostart, setTerminalEnvProxy, apiWhitelistRequest, testUpstreamProxy } = useTauri();
 
   const [form, setForm] = useState({ ...serverConfig });
@@ -562,6 +566,104 @@ export default function Settings() {
             <span className={styles.slider} />
           </label>
         </div>
+
+        <hr className={styles.separator} />
+
+        {/* ── Section: Customization & Acrylic Background ─────────────────── */}
+        <div className={styles.sectionHeader}>
+          <Palette size={16} />
+          <h2 className={styles.sectionTitle}>{t('settings.sectionCustomization', 'Interface Customization & Appearance')}</h2>
+        </div>
+
+        {/* Background Mode Selector */}
+        <div className={styles.field}>
+          <label className={styles.label}>{t('settings.bgModeLabel', 'Window Background Mode')}</label>
+          <div className={styles.modeSelectorGrid}>
+            <button
+              type="button"
+              className={`${styles.modeCard} ${(customization?.bgMode || 'default') === 'default' ? styles.modeCardActive : ''}`}
+              onClick={() => dispatch({ type: 'SET_CUSTOMIZATION', payload: { bgMode: 'default' } })}
+            >
+              <div className={styles.modeCardHeader}>
+                <div className={styles.modeCardIcon}>
+                  <Layers size={18} />
+                </div>
+                <div className={styles.modeCardRadio}>
+                  <span className={styles.radioDot} />
+                </div>
+              </div>
+              <div className={styles.modeCardContent}>
+                <span className={styles.modeCardTitle}>{t('settings.bgModeDefault', 'Solid Monolith')}</span>
+                <span className={styles.modeCardDesc}>{t('settings.bgModeDefaultDesc', 'Opaque deep dark background (#121212)')}</span>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              className={`${styles.modeCard} ${customization?.bgMode === 'acrylic' ? styles.modeCardActive : ''}`}
+              onClick={() => dispatch({ type: 'SET_CUSTOMIZATION', payload: { bgMode: 'acrylic' } })}
+            >
+              <div className={styles.modeCardHeader}>
+                <div className={styles.modeCardIcon}>
+                  <Sparkles size={18} />
+                </div>
+                <div className={styles.modeCardRadio}>
+                  <span className={styles.radioDot} />
+                </div>
+              </div>
+              <div className={styles.modeCardContent}>
+                <span className={styles.modeCardTitle}>{t('settings.bgModeAcrylic', 'Translucent Acrylic')}</span>
+                <span className={styles.modeCardDesc}>{t('settings.bgModeAcrylicDesc', 'Frosted glass with dynamic blur and transparency')}</span>
+              </div>
+            </button>
+          </div>
+          <p className={styles.hint}>{t('settings.bgModeDesc', 'Select between the solid dark monolith theme and transparent acrylic glass with real-time blur.')}</p>
+        </div>
+
+        {/* Detailed Controls: Animated Sliders & Live Preview (Expands when acrylic mode is active) */}
+        {customization?.bgMode === 'acrylic' && (
+          <div className={styles.acrylicBox}>
+            <AnimatedSlider
+              label={t('settings.opacityLabel', 'Window Opacity')}
+              description={t('settings.opacityDesc', 'Adjust background opacity (lower values make the window more transparent).')}
+              value={customization?.opacity ?? 75}
+              min={20}
+              max={98}
+              step={1}
+              unit="%"
+              presets={[
+                { value: 40, label: t('settings.customizationPresetHigh', 'High (40%)') },
+                { value: 60, label: '60%' },
+                { value: 75, label: t('settings.customizationPresetMed', 'Balanced (75%)') },
+                { value: 90, label: t('settings.customizationPresetDense', 'Dense (90%)') },
+                { value: 98, label: t('settings.customizationPresetMax', 'Opaque (98%)') },
+              ]}
+              onChange={(nextOpacity) =>
+                dispatch({ type: 'SET_CUSTOMIZATION', payload: { opacity: nextOpacity } })
+              }
+            />
+
+            <AnimatedSlider
+              label={t('settings.blurLabel', 'Backdrop Blur Intensity')}
+              description={t('settings.blurDesc', 'Configure background blur radius for the acrylic frosted effect.')}
+              value={customization?.blur ?? 16}
+              min={0}
+              max={40}
+              step={1}
+              unit="px"
+              presets={[
+                { value: 0, label: t('settings.customizationBlurOff', 'Crisp (0px)') },
+                { value: 10, label: t('settings.customizationBlurSoft', 'Soft (10px)') },
+                { value: 16, label: t('settings.customizationBlurAcrylic', 'Acrylic (16px)') },
+                { value: 24, label: '24px' },
+                { value: 36, label: t('settings.customizationBlurDeep', 'Deep (36px)') },
+              ]}
+              onChange={(nextBlur) =>
+                dispatch({ type: 'SET_CUSTOMIZATION', payload: { blur: nextBlur } })
+              }
+            />
+          </div>
+        )}
 
         <hr className={styles.separator} />
 

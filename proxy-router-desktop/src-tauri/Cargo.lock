@@ -2758,7 +2758,7 @@ dependencies = [
 
 [[package]]
 name = "proxy-router-desktop"
-version = "1.0.19"
+version = "1.0.20"
 dependencies = [
  "native-tls",
  "serde",
@@ -2768,6 +2768,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tokio",
  "tokio-native-tls",
+ "window-vibrancy",
 ]
 
 [[package]]
