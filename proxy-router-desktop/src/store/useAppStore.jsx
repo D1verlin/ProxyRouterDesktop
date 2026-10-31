@@ -7,6 +7,9 @@ import { translations } from '../i18n/translations';
 
 // ── Initial State ──────────────────────────────────────────────────────────────
 const initialState = {
+  /** Whether persisted settings have finished loading from storage */
+  isHydrated: false,
+
   /** Whether the proxy routing is currently active */
   isActive: false,
 
@@ -284,9 +287,9 @@ const initialState = {
   /** Windows system autostart (OFF by default) */
   autostart: false,
 
-  /** Customization & UI Theme (Acrylic background, opacity & blur) */
+  /** Customization & UI Theme (Acrylic background, Mica & opacity) */
   customization: {
-    bgMode: 'default', // 'default' | 'acrylic'
+    bgMode: 'default', // 'default' | 'acrylic' | 'mica'
     opacity: 75,       // 20 .. 95 %
     blur: 16,          // 0 .. 40 px
   },
@@ -298,6 +301,9 @@ const initialState = {
 // ── Reducer ────────────────────────────────────────────────────────────────────
 function reducer(state, action) {
   switch (action.type) {
+    case 'SET_HYDRATED':
+      return { ...state, isHydrated: Boolean(action.payload) };
+
     case 'SET_ACTIVE':
       return { ...state, isActive: action.payload };
 

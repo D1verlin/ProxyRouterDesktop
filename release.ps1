@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Tag = "v1.0.20",
+    [string]$Tag = "v1.0.21",
     [string]$RemoteUrl = "https://github.com/D1verlin/ProxyRouterDesktop.git",
     [switch]$SkipBuildCheck,
     [switch]$NoPush
@@ -61,7 +61,7 @@ git -C "$rootDir" add .
 $status = git -C "$rootDir" status --porcelain
 if ($status) {
     Write-Host "[+] Creating release commit..." -ForegroundColor Yellow
-    git -C "$rootDir" commit -m "feat: release $Tag - acrylic background customization with animated opacity and blur sliders"
+    git -C "$rootDir" commit -m "feat: release $Tag - fix startup proxy leak, stabilize blur and add Mica theme support"
 } else {
     Write-Host "[i] No new changes to commit, working tree is clean." -ForegroundColor Gray
 }

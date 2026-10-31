@@ -10,7 +10,7 @@ use proxy::{
     set_system_proxy, set_terminal_env_proxy, start_embedded_pac_server,
     start_local_proxy_forwarder, test_dns_latency, test_upstream_proxy, update_pac_rules, update_tray_icon,
     update_upstream_proxy, window_close, window_minimize, window_toggle_maximize,
-    set_window_effect,
+    set_window_effect, sanitize_startup_proxy, win32_proxy,
     TRAY_INACTIVE_BYTES,
 };
 
@@ -26,6 +26,12 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(move |app| {
+            // Register Windows console shutdown & logoff handler
+            win32_proxy::install_shutdown_handler();
+
+            // Sanitize any stale Windows proxy settings if previously left by crash/reboot
+            sanitize_startup_proxy();
+
             start_embedded_pac_server();
             start_local_proxy_forwarder();
 
@@ -132,6 +138,11 @@ pub fn run() {
             window_close,
             set_window_effect,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app_handle, event| {
+            if let tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit = event {
+                let _ = proxy::clear_system_proxy_sync();
+            }
+        });
 }

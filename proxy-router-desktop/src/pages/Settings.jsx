@@ -25,6 +25,7 @@ import {
   Palette,
   Layers,
   Sparkles,
+  Gem,
 } from 'lucide-react';
 import AnimatedSlider from '../components/AnimatedSlider';
 import {
@@ -39,7 +40,7 @@ import {
 import { useTauri } from '../hooks/useTauri';
 import styles from './Settings.module.css';
 
-const CURRENT_VERSION = '1.0.20';
+const CURRENT_VERSION = '1.0.21';
 const GITHUB_REPO = 'D1verlin/ProxyRouterDesktop';
 const GITHUB_REPO_URL = 'https://github.com/D1verlin/ProxyRouterDesktop';
 const GITHUB_RELEASES_URL = 'https://github.com/D1verlin/ProxyRouterDesktop/releases';
@@ -614,6 +615,25 @@ export default function Settings() {
               <div className={styles.modeCardContent}>
                 <span className={styles.modeCardTitle}>{t('settings.bgModeAcrylic', 'Translucent Acrylic')}</span>
                 <span className={styles.modeCardDesc}>{t('settings.bgModeAcrylicDesc', 'Frosted glass with dynamic blur and transparency')}</span>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              className={`${styles.modeCard} ${customization?.bgMode === 'mica' ? styles.modeCardActive : ''}`}
+              onClick={() => dispatch({ type: 'SET_CUSTOMIZATION', payload: { bgMode: 'mica' } })}
+            >
+              <div className={styles.modeCardHeader}>
+                <div className={styles.modeCardIcon}>
+                  <Gem size={18} />
+                </div>
+                <div className={styles.modeCardRadio}>
+                  <span className={styles.radioDot} />
+                </div>
+              </div>
+              <div className={styles.modeCardContent}>
+                <span className={styles.modeCardTitle}>{t('settings.bgModeMica', 'Native Mica')}</span>
+                <span className={styles.modeCardDesc}>{t('settings.bgModeMicaDesc', 'Modern Windows 11 dynamic desktop tint material')}</span>
               </div>
             </button>
           </div>

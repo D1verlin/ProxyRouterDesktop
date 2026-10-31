@@ -1149,6 +1149,7 @@ pub async fn set_system_proxy(
 /// Synchronous internal version of clear_system_proxy
 pub fn clear_system_proxy_sync() -> Result<String, String> {
     PROXY_ACTIVE.store(false, std::sync::atomic::Ordering::SeqCst);
+    win32_proxy::clear_system_proxy_native();
     apply_windows_system_proxy(false)?;
     let _ = set_terminal_env_proxy_internal(None, false);
     if let Ok(mut lock) = PAC_CONTENT.write() {
@@ -2237,7 +2238,7 @@ pub fn update_tray_icon(app: AppHandle, active: bool) -> Result<(), String> {
 
 #[command]
 pub fn app_quit(app: AppHandle) -> Result<(), String> {
-    let _ = clear_system_proxy();
+    let _ = clear_system_proxy_sync();
     app.exit(0);
     Ok(())
 }
@@ -2287,7 +2288,8 @@ pub fn set_window_effect(window: Window, effect: String, color: Option<(u8, u8, 
                 let _ = clear_acrylic(&window);
                 let _ = clear_blur(&window);
                 if let Err(e) = apply_mica(&window, Some(true)) {
-                    eprintln!("[set_window_effect] apply_mica: {e}");
+                    eprintln!("[set_window_effect] apply_mica failed ({e}), fallback to acrylic");
+                    let _ = apply_acrylic(&window, color.or(Some((18, 18, 18, 200))));
                 }
             }
             _ => {
@@ -2298,6 +2300,174 @@ pub fn set_window_effect(window: Window, effect: String, color: Option<(u8, u8, 
         }
     }
     Ok(())
+}
+
+// ── Native Win32 Registry & Shutdown Safety ──────────────────────────────────
+
+#[cfg(windows)]
+pub mod win32_proxy {
+    use std::ffi::c_void;
+    use std::ptr::null_mut;
+
+    pub const HKEY_CURRENT_USER: isize = -2147483647; // 0x80000001
+    pub const KEY_SET_VALUE: u32 = 0x0002;
+    pub const REG_SZ: u32 = 1;
+    pub const REG_BINARY: u32 = 3;
+    pub const REG_DWORD: u32 = 4;
+
+    pub const INTERNET_OPTION_SETTINGS_CHANGED: u32 = 39;
+    pub const INTERNET_OPTION_REFRESH: u32 = 37;
+
+    #[link(name = "advapi32")]
+    extern "system" {
+        pub fn RegOpenKeyExW(
+            hKey: isize,
+            lpSubKey: *const u16,
+            ulOptions: u32,
+            samDesired: u32,
+            phkResult: *mut isize,
+        ) -> i32;
+
+        pub fn RegSetValueExW(
+            hKey: isize,
+            lpValueName: *const u16,
+            Reserved: u32,
+            dwType: u32,
+            lpData: *const u8,
+            cbData: u32,
+        ) -> i32;
+
+        pub fn RegDeleteValueW(
+            hKey: isize,
+            lpValueName: *const u16,
+        ) -> i32;
+
+        pub fn RegCloseKey(hKey: isize) -> i32;
+    }
+
+    #[link(name = "wininet")]
+    extern "system" {
+        pub fn InternetSetOptionW(
+            hInternet: *mut c_void,
+            dwOption: u32,
+            lpBuffer: *mut c_void,
+            dwBufferLength: u32,
+        ) -> i32;
+    }
+
+    #[link(name = "user32")]
+    extern "system" {
+        pub fn SendMessageTimeoutW(
+            hWnd: isize,
+            Msg: u32,
+            wParam: usize,
+            lParam: *const u16,
+            fuFlags: u32,
+            uTimeout: u32,
+            lpdwResult: *mut usize,
+        ) -> isize;
+    }
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        pub fn SetConsoleCtrlHandler(
+            HandlerRoutine: Option<unsafe extern "system" fn(u32) -> i32>,
+            Add: i32,
+        ) -> i32;
+    }
+
+    /// Fast, native <1ms Win32 reset of system proxy to Direct (no PowerShell overhead)
+    pub fn clear_system_proxy_native() {
+        // 1. Reset HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings
+        let subkey: Vec<u16> = "Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings\0".encode_utf16().collect();
+        let mut hkey: isize = 0;
+        if unsafe { RegOpenKeyExW(HKEY_CURRENT_USER, subkey.as_ptr(), 0, KEY_SET_VALUE, &mut hkey) } == 0 {
+            let val_enable: Vec<u16> = "ProxyEnable\0".encode_utf16().collect();
+            let zero: u32 = 0;
+            unsafe {
+                RegSetValueExW(hkey, val_enable.as_ptr(), 0, REG_DWORD, &zero as *const _ as *const u8, 4);
+            }
+
+            let val_server: Vec<u16> = "ProxyServer\0".encode_utf16().collect();
+            let empty_sz: [u16; 1] = [0];
+            unsafe {
+                RegSetValueExW(hkey, val_server.as_ptr(), 0, REG_SZ, empty_sz.as_ptr() as *const u8, 2);
+            }
+
+            let val_pac: Vec<u16> = "AutoConfigURL\0".encode_utf16().collect();
+            unsafe {
+                RegDeleteValueW(hkey, val_pac.as_ptr());
+                RegCloseKey(hkey);
+            }
+        }
+
+        // 2. Reset Connections DefaultConnectionSettings and SavedLegacySettings to DIRECT (0x01)
+        let conn_subkey: Vec<u16> = "Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings\\Connections\0".encode_utf16().collect();
+        let mut conn_hkey: isize = 0;
+        if unsafe { RegOpenKeyExW(HKEY_CURRENT_USER, conn_subkey.as_ptr(), 0, KEY_SET_VALUE, &mut conn_hkey) } == 0 {
+            let bypass = b"localhost;127.0.0.1;<local>";
+            let mut blob = Vec::with_capacity(80);
+            blob.extend_from_slice(&[0x46, 0x00, 0x00, 0x00, 0x13, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00]);
+            blob.extend_from_slice(&(0u32).to_le_bytes()); // proxy len = 0
+            blob.extend_from_slice(&(bypass.len() as u32).to_le_bytes()); // bypass len
+            blob.extend_from_slice(bypass);
+            blob.extend_from_slice(&(0u32).to_le_bytes()); // pac len = 0
+            blob.resize(blob.len() + 32, 0u8); // 32 bytes padding
+
+            let val_def: Vec<u16> = "DefaultConnectionSettings\0".encode_utf16().collect();
+            let val_saved: Vec<u16> = "SavedLegacySettings\0".encode_utf16().collect();
+            unsafe {
+                RegSetValueExW(conn_hkey, val_def.as_ptr(), 0, REG_BINARY, blob.as_ptr(), blob.len() as u32);
+                RegSetValueExW(conn_hkey, val_saved.as_ptr(), 0, REG_BINARY, blob.as_ptr(), blob.len() as u32);
+                RegCloseKey(conn_hkey);
+            }
+        }
+
+        // 3. Notify WinINet and broadcast setting change
+        unsafe {
+            InternetSetOptionW(null_mut(), INTERNET_OPTION_SETTINGS_CHANGED, null_mut(), 0);
+            InternetSetOptionW(null_mut(), INTERNET_OPTION_REFRESH, null_mut(), 0);
+
+            let param: Vec<u16> = "Internet Settings\0".encode_utf16().collect();
+            let mut result: usize = 0;
+            SendMessageTimeoutW(0xffff, 0x001A, 0, param.as_ptr(), 0x0002, 1000, &mut result);
+        }
+    }
+
+    unsafe extern "system" fn console_ctrl_handler(_ctrl_type: u32) -> i32 {
+        clear_system_proxy_native();
+        0
+    }
+
+    pub fn install_shutdown_handler() {
+        unsafe {
+            SetConsoleCtrlHandler(Some(console_ctrl_handler), 1);
+        }
+    }
+}
+
+#[cfg(not(windows))]
+pub mod win32_proxy {
+    pub fn clear_system_proxy_native() {}
+    pub fn install_shutdown_handler() {}
+}
+
+/// Checks if Windows proxy is still configured to 127.0.0.1:8183 while PROXY_ACTIVE is false,
+/// and resets it to direct if so.
+pub fn sanitize_startup_proxy() {
+    #[cfg(windows)]
+    {
+        let is_active = PROXY_ACTIVE.load(std::sync::atomic::Ordering::Relaxed);
+        if !is_active {
+            let proxy_en = reg_get("ProxyEnable").unwrap_or_default();
+            let proxy_srv = reg_get("ProxyServer").unwrap_or_default();
+            if proxy_en == "0x1" || proxy_en == "1" || proxy_srv.contains("127.0.0.1:8183") {
+                eprintln!("[sanitize_startup_proxy] Detected stale proxy settings on startup (ProxyServer: {}, ProxyEnable: {}). Cleaning...", proxy_srv, proxy_en);
+                win32_proxy::clear_system_proxy_native();
+                let _ = apply_windows_system_proxy(false);
+            }
+        }
+    }
 }
 
 
