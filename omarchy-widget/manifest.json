@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "proxy-router",
+  "name": "Proxy Router",
+  "version": "1.0.0",
+  "author": "D1verlin",
+  "license": "MIT",
+  "description": "Proxy Router Split Tunneling and Stealth VPS Whitelist widget for Omarchy topbar",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Proxy Router",
+    "description": "Selective proxy routing and instant VPS kernel whitelist protection",
+    "category": "Network",
+    "defaultSection": "right",
+    "allowMultiple": false
+  }
+}

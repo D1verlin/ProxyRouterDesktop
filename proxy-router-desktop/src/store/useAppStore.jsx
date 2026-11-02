@@ -274,8 +274,8 @@ const initialState = {
 
   /** Server configuration */
   serverConfig: {
-    apiUrl:          'http://2.27.25.190:1135',
-    authToken:       '082c94abc5fb19fe949fb3798020bd3a5d9daa1f6e5bc076',
+    apiUrl:          '',
+    authToken:       '',
     proxyPort:       3128,
     proxyProtocol:   'http',
     ignoreTlsErrors: true,
@@ -449,7 +449,7 @@ export function useAppStore() {
 export function getEffectiveApiUrl(serverConfig) {
   let url = (serverConfig?.apiUrl || '').trim();
   if (!url || url.includes('your-server-ip')) {
-    url = 'http://2.27.25.190:1135';
+    return '';
   }
   if (!url.startsWith('http://') && !url.startsWith('https://')) {
     url = `http://${url}`;
@@ -459,11 +459,7 @@ export function getEffectiveApiUrl(serverConfig) {
 
 export function getEffectiveAuthToken(serverConfig) {
   let token = (serverConfig?.authToken || '').trim();
-  token = token.replace(/^Bearer\s+/i, '').trim();
-  if (!token) {
-    token = '082c94abc5fb19fe949fb3798020bd3a5d9daa1f6e5bc076';
-  }
-  return token;
+  return token.replace(/^Bearer\s+/i, '').trim();
 }
 
 export function getEffectiveProxyHost(serverConfig) {
@@ -475,7 +471,7 @@ export function getEffectiveProxyHost(serverConfig) {
       }
     }
   } catch {}
-  return '2.27.25.190';
+  return '';
 }
 
 export function getDefaultPortForProtocol(protocol) {

@@ -854,9 +854,9 @@ export default function Settings() {
               {(form.proxyProtocol || 'http').toUpperCase()}://{(() => {
                 try {
                   const h = new URL(form.apiUrl).hostname;
-                  return h && h !== 'localhost' ? h : '2.27.25.190';
+                  return form.proxyHost || (h && h !== 'localhost' ? h : 'your-server-ip');
                 } catch {
-                  return '2.27.25.190';
+                  return form.proxyHost || 'your-server-ip';
                 }
               })()}:{form.proxyPort || getDefaultPortForProtocol(form.proxyProtocol || 'http')}
             </span>

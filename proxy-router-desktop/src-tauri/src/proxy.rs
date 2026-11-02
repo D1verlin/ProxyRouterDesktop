@@ -396,7 +396,7 @@ pub fn start_embedded_pac_server() {
         "linguee.com".to_string(),
         "deepl-partners.com".to_string(),
     ];
-    let default_pac = generate_pac_script("2.27.25.190", 3128, UpstreamProtocol::Http, &default_domains);
+    let default_pac = generate_pac_script("", 3128, UpstreamProtocol::Http, &default_domains);
     if let Ok(mut lock) = PAC_CONTENT.write() {
         *lock = Some(Arc::new(default_pac));
     }
@@ -404,7 +404,7 @@ pub fn start_embedded_pac_server() {
         *lock = default_domains.clone();
     }
     if let Ok(mut lock) = UPSTREAM_PROXY.write() {
-        *lock = ("2.27.25.190".to_string(), 3128, UpstreamProtocol::Http, true);
+        *lock = ("".to_string(), 3128, UpstreamProtocol::Http, true);
     }
 
     thread::spawn(move || {
@@ -955,12 +955,11 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
 
 fn resolve_effective_proxy_target(host: &str, port: u16) -> (String, u16) {
     let trimmed = host.trim();
-    let eff_host = if trimmed.is_empty()
-        || trimmed.contains("your-server-ip")
+    let eff_host = if trimmed.contains("your-server-ip")
         || trimmed == "127.0.0.1"
         || trimmed == "localhost"
     {
-        "2.27.25.190".to_string()
+        "".to_string()
     } else {
         trimmed.to_string()
     };

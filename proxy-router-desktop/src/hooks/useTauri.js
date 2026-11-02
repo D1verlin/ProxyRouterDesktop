@@ -33,7 +33,7 @@ async function invoke(cmd, args = {}) {
     case 'update_upstream_proxy':
       return 'Browser mock: upstream proxy updated';
     case 'test_upstream_proxy':
-      return { ok: true, latency_ms: 45, protocol: args.proxyProtocol || 'http', target: '2.27.25.190:3128' };
+      return { ok: true, latency_ms: 45, protocol: args.proxyProtocol || 'http', target: `${args.proxyHost || '127.0.0.1'}:${args.proxyPort || 1080}` };
     case 'launch_app_with_proxy':
       return Math.floor(Math.random() * 9000) + 1000;
     case 'launch_proxied_terminal':

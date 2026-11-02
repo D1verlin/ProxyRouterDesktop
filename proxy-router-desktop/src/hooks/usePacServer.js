@@ -55,7 +55,7 @@ export function usePacServer() {
     if (isTauri) {
       try {
         await updatePacRules(
-          cfg.proxyHost || '2.27.25.190',
+          cfg.proxyHost || '',
           cfg.proxyPort || 3128,
           allHosts,
           cfg.proxyProtocol || 'http',

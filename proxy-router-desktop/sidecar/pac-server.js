@@ -23,7 +23,7 @@ const PAC_PORT = parseInt(process.env.PAC_PORT ?? '8182', 10);
 
 // ── Current config ────────────────────────────────────────────────────────────
 let config = {
-  proxyHost:     process.env.PROXY_HOST     ?? '2.27.25.190',
+  proxyHost:     process.env.PROXY_HOST     ?? '',
   proxyPort:     parseInt(process.env.PROXY_PORT ?? '3128', 10),
   enabledHosts:  [
     'gemini.google.com',
