@@ -1,0 +1,26 @@
+{
+  "name": "Proxy Router",
+  "short_name": "ProxyRouter",
+  "description": "Умный персональный шлюз с ядром nftables для раздельной маршрутизации трафика без задержек и цензуры.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#FBF6EF",
+  "theme_color": "#FBF6EF",
+  "icons": [
+    {
+      "src": "assets/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "Proxy Router.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

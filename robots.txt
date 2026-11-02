@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://d1verlin.github.io/ProxyRouterDesktop/sitemap.xml
