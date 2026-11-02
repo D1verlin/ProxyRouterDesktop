@@ -1,0 +1,2093 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Proxy Router — на твоих условиях</title>
+  <meta name="description" content="Умный персональный шлюз с ядром nftables для раздельной маршрутизации трафика без задержек и цензуры. Общайся, сёрфи, работай на твоих условиях.">
+  
+  <!-- Inter Tight (Google Fonts with Latin & Cyrillic) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap" rel="stylesheet">
+
+  <style>
+    /* ─── RESET & CSS VARIABLES ─── */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    :root {
+      /* Scaled frame unit based on 1440x960 reference viewport */
+      --u: min(100vw / 1440, 100vh / 960);
+      
+      --ink: #0D0D0C;
+      --ink-secondary: rgba(13, 13, 12, 0.58);
+      --ink-hint: rgba(13, 13, 12, 0.42);
+      --ink-hairline: rgba(13, 13, 12, 0.08);
+      --cream: #FBF6EF;
+      
+      /* Active state values (updated dynamically by clock) */
+      --current-tint: #E9C22E;
+      --current-mask: url('assets/icon-chat.webp');
+    }
+
+    /* Zero-Scrollbar root styling */
+    html, body {
+      width: 100%;
+      height: 100%;
+      height: 100dvh;
+      overflow: hidden !important;
+      background-color: var(--cream);
+      color: var(--ink);
+      font-family: 'Inter Tight', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      user-select: none;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+
+    html::-webkit-scrollbar, body::-webkit-scrollbar {
+      display: none;
+      width: 0;
+      height: 0;
+    }
+
+    /* ─── TWO-LAYER ARCHITECTURE (Zero-Scrollbar SPA) ─── */
+    .app-viewport {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+      overflow: hidden;
+    }
+
+    .page-layer {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transform: scale(0.97) translateY(8px);
+      transition: opacity 0.42s cubic-bezier(0.16, 1, 0.3, 1),
+                  transform 0.42s cubic-bezier(0.16, 1, 0.3, 1),
+                  visibility 0.42s;
+      will-change: transform, opacity;
+    }
+
+    .page-layer.active {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      transform: scale(1) translateY(0);
+      z-index: 20;
+    }
+
+    .page-layer.leaving {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transform: scale(0.97) translateY(-8px);
+      z-index: 10;
+    }
+
+    /* ─── LAYER 1: HERO PRESENTATION (100vh) ─── */
+    #layerHero {
+      background-color: var(--cream);
+    }
+
+    
+    /* ─── TOP NAVIGATION (80u tall, seamless) ─── */
+    .top-nav {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: calc(80 * var(--u));
+      padding: 0 calc(112 * var(--u));
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      z-index: 10;
+    }
+
+    .brand-group {
+      display: inline-flex;
+      align-items: center;
+      gap: calc(14 * var(--u));
+      text-decoration: none;
+      color: var(--ink);
+    }
+
+    .brand-dot {
+      width: calc(13 * var(--u));
+      height: calc(13 * var(--u));
+      background-color: var(--ink);
+      border-radius: 50%;
+      display: inline-block;
+      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .brand-group:hover .brand-dot {
+      transform: scale(1.22);
+    }
+
+    .brand-name {
+      font-size: calc(25 * var(--u));
+      font-weight: 600;
+      letter-spacing: -0.025em;
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+    }
+
+    .nav-btn {
+      height: calc(44 * var(--u));
+      padding: 0 calc(22 * var(--u));
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-family: inherit;
+      font-size: calc(15 * var(--u));
+      font-weight: 500;
+      color: var(--ink);
+      background: transparent;
+      border: 1.4px solid var(--ink);
+      border-radius: 999px;
+      cursor: pointer;
+      transition: background-color 0.25s ease, color 0.25s ease, transform 0.2s ease;
+    }
+
+    .nav-btn:hover {
+      background-color: var(--ink);
+      color: #FFFFFF;
+      transform: none;
+    }
+
+    .hero-panel {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 75%;
+      overflow: hidden;
+      z-index: 1;
+    }
+
+    /* 4 Stacked Gradient Layers with idle drift */
+    .gradient-layer {
+      position: absolute;
+      inset: -5%;
+      width: 110%;
+      height: 110%;
+      opacity: 0;
+      transition: opacity 0.77s cubic-bezier(0.4, 0, 0.2, 1);
+      pointer-events: none;
+      animation: gradientDrift 14s ease-in-out infinite alternate;
+      will-change: transform, opacity;
+    }
+
+    .gradient-layer.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    /* Word 0: Общайся (lemon cream) */
+    .layer-lemon {
+      background: 
+        radial-gradient(circle at 86% 76%, rgb(246, 222, 104) 0%, rgba(246, 222, 104, 0) 58%),
+        radial-gradient(circle at 32% 105%, rgba(246, 222, 104, 0.65) 0%, rgba(246, 222, 104, 0) 52%),
+        linear-gradient(180deg, #F2ECDF 0%, #F4EBC6 100%);
+    }
+
+    /* Word 1: Сёрфи (peach & apricot) */
+    .layer-peach {
+      background: 
+        radial-gradient(circle at 86% 76%, rgb(249, 150, 84) 0%, rgba(249, 150, 84, 0) 58%),
+        radial-gradient(circle at 32% 105%, rgba(249, 150, 84, 0.65) 0%, rgba(249, 150, 84, 0) 52%),
+        linear-gradient(180deg, #F8DCC7 0%, #F9CBA9 100%);
+    }
+
+    /* Word 2: Работай (warm sage mint) */
+    .layer-sage {
+      background: 
+        radial-gradient(circle at 86% 76%, rgb(150, 206, 150) 0%, rgba(150, 206, 150, 0) 58%),
+        radial-gradient(circle at 32% 105%, rgba(150, 206, 150, 0.65) 0%, rgba(150, 206, 150, 0) 52%),
+        linear-gradient(180deg, #E9EBE0 0%, #DFE9D4 100%);
+    }
+
+    /* Word 3: Маршрутизируй (rose lilac) */
+    .layer-lilac {
+      background: 
+        radial-gradient(circle at 86% 76%, rgb(222, 150, 200) 0%, rgba(222, 150, 200, 0) 58%),
+        radial-gradient(circle at 32% 105%, rgba(222, 150, 200, 0.65) 0%, rgba(222, 150, 200, 0) 52%),
+        linear-gradient(180deg, #F0E4E6 0%, #ECD6E2 100%);
+    }
+
+    @keyframes gradientDrift {
+      0% {
+        transform: translate(-1.8%, -1.2%) scale(1.06);
+      }
+      100% {
+        transform: translate(1.8%, 1.4%) scale(1.09);
+      }
+    }
+
+    /* Fine SVG Fractal-Noise Grain */
+    .grain-overlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.18;
+      mix-blend-mode: multiply;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 240 240' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+      z-index: 2;
+    }
+
+    /* ─── HEADLINE (Left 112u, Top 150u, Size 172u) ─── */
+    .headline-container {
+      position: absolute;
+      left: calc(112 * var(--u));
+      top: calc(150 * var(--u));
+      z-index: 5;
+    }
+
+    .headline {
+      font-size: calc(172 * var(--u));
+      line-height: 0.86;
+      font-weight: 500;
+      letter-spacing: -0.032em;
+      color: var(--ink);
+    }
+
+    .headline-row-dynamic {
+      display: flex;
+      align-items: center;
+      min-height: calc(172 * var(--u) * 0.86);
+    }
+
+    .word-slot {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.08em;
+      position: relative;
+    }
+
+    /* 3D Glossy Icon wrapper */
+    .icon-wrapper {
+      position: relative;
+      width: 1.02em;
+      height: 1.02em;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      isolation: isolate;
+      vertical-align: middle;
+      flex-shrink: 0;
+      transform-origin: center center;
+    }
+
+    .icon-float-wrapper {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: iconFloat 3.4s ease-in-out infinite alternate;
+    }
+
+    @keyframes iconFloat {
+      0% {
+        transform: translateY(-0.02em);
+      }
+      100% {
+        transform: translateY(0.02em);
+      }
+    }
+
+    .icon-img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      filter: grayscale(1) brightness(1.1) contrast(1.08);
+      display: block;
+      pointer-events: none;
+    }
+
+    .icon-tint-layer {
+      position: absolute;
+      inset: 0;
+      background-color: var(--current-tint);
+      mix-blend-mode: color;
+      -webkit-mask: var(--current-mask) center / contain no-repeat;
+      mask: var(--current-mask) center / contain no-repeat;
+      pointer-events: none;
+      transition: background-color 0.5s ease;
+    }
+
+    .dynamic-word {
+      display: inline-block;
+      white-space: nowrap;
+    }
+
+    .headline-row-static {
+      margin-top: calc(12 * var(--u));
+      white-space: nowrap;
+    }
+
+    /* Word & Icon Enter & Leave Animation (Silky Smooth, Zero Pop) */
+    .word-enter {
+      animation: wordEnterAnim 0.65s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+
+    .word-leave {
+      animation: wordLeaveAnim 0.45s cubic-bezier(0.7, 0, 0.84, 0) both;
+    }
+
+    .icon-enter {
+      animation: iconEnterAnim 0.65s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+
+    .icon-leave {
+      animation: iconLeaveAnim 0.45s cubic-bezier(0.7, 0, 0.84, 0) both;
+    }
+
+    @keyframes wordEnterAnim {
+      0% {
+        opacity: 0;
+        transform: translateY(0.28em) scale(0.96);
+        filter: blur(8px);
+      }
+      100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+        filter: blur(0);
+      }
+    }
+
+    @keyframes wordLeaveAnim {
+      0% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+        filter: blur(0);
+      }
+      100% {
+        opacity: 0;
+        transform: translateY(-0.16em) scale(0.98);
+        filter: blur(6px);
+      }
+    }
+
+    @keyframes iconEnterAnim {
+      0% {
+        opacity: 0;
+        transform: translateY(0.22em) scale(0.85);
+        filter: blur(6px);
+      }
+      100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+        filter: blur(0);
+      }
+    }
+
+    @keyframes iconLeaveAnim {
+      0% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+        filter: blur(0);
+      }
+      100% {
+        opacity: 0;
+        transform: translateY(-0.14em) scale(0.88);
+        filter: blur(5px);
+      }
+    }
+
+    /* Action Row (Buttons + Caption) */
+    .action-row {
+      position: absolute;
+      left: calc(112 * var(--u));
+      top: calc(552 * var(--u));
+      display: flex;
+      align-items: center;
+      gap: calc(34 * var(--u));
+      z-index: 5;
+    }
+
+    .action-buttons {
+      display: flex;
+      align-items: center;
+      gap: calc(14 * var(--u));
+    }
+
+    .action-btn {
+      height: calc(58 * var(--u));
+      padding: 0 calc(22 * var(--u));
+      display: inline-flex;
+      align-items: center;
+      gap: calc(12 * var(--u));
+      font-size: calc(17 * var(--u));
+      font-weight: 500;
+      color: var(--ink);
+      text-decoration: none;
+      background: transparent;
+      border: 1.4px solid rgba(13, 13, 12, 0.45);
+      border-radius: calc(8 * var(--u));
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .action-btn:hover {
+      background-color: var(--ink);
+      color: #FFFFFF;
+      border-color: var(--ink);
+      transform: none;
+    }
+
+    .action-btn.flash-active {
+      background-color: var(--ink);
+      color: #FFFFFF;
+      border-color: var(--ink);
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.12);
+    }
+
+    .action-btn.flash-active svg {
+      fill: #FFFFFF;
+    }
+
+    .action-btn svg {
+      width: calc(20 * var(--u));
+      height: calc(20 * var(--u));
+      fill: currentColor;
+      transition: fill 0.25s ease;
+    }
+
+    .action-caption {
+      font-size: calc(18.5 * var(--u));
+      line-height: 1.36;
+      color: var(--ink-secondary);
+      max-width: calc(640 * var(--u));
+    }
+
+    /* Stats Strip (Bottom 25% of Hero, Cream #FBF6EF) */
+    
+
+    /* Exact S-Curve Notch SVG */
+    .notch-svg-wrap {
+      position: absolute;
+      bottom: calc(100% - 1px);
+      left: 0;
+      width: 100%;
+      height: calc(62 * var(--u));
+      pointer-events: none;
+      line-height: 0;
+    }
+
+    .notch-svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .notch-desktop {
+      display: block !important;
+    }
+
+    .notch-mobile {
+      display: none !important;
+    }
+
+    /* Switch to Layer 2 Trigger on Raised Lip */
+    .scroll-hint-tab {
+      position: absolute;
+      right: calc(48 * var(--u));
+      bottom: calc(100% + 16 * var(--u));
+      display: inline-flex;
+      align-items: center;
+      gap: calc(8 * var(--u));
+      font-size: calc(15 * var(--u));
+      font-weight: 500;
+      color: var(--ink-hint);
+      cursor: pointer;
+      text-decoration: none;
+      transition: color 0.2s ease, transform 0.2s ease;
+      z-index: 15;
+    }
+
+    .scroll-hint-tab:hover {
+      color: var(--ink);
+      transform: none;
+    }
+
+    .scroll-hint-arrow {
+      transition: transform 0.25s ease;
+    }
+
+    .scroll-hint-tab:hover .scroll-hint-arrow {
+      transform: translateY(2px);
+    }
+
+    /* Strip Content */
+    
+    /* ─── STATS STRIP AS FLEX COLUMN (ZERO SCROLLBAR) ─── */
+    .stats-strip {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 25%;
+      background-color: var(--cream);
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .stats-content {
+      position: relative;
+      flex: 1 1 auto;
+      padding: calc(18 * var(--u)) calc(112 * var(--u)) 0 calc(112 * var(--u));
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+    }
+
+    /* ─── SITE FOOTER: STRICTLY NO BORDER, COLOR EXACTLY MATCHES CONTAINER ABOVE ─── */
+    .site-footer {
+      height: calc(44 * var(--u));
+      padding: 0 calc(112 * var(--u));
+      border: none !important; /* NO BORDER AS REQUESTED */
+      background-color: var(--cream); /* IDENTICAL TO CONTAINER ABOVE */
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: calc(14 * var(--u));
+      color: var(--ink-secondary);
+      cursor: default;
+      transition: background-color 0.25s ease;
+    }
+
+    .footer-brand {
+      display: inline-flex;
+      align-items: center;
+      gap: calc(10 * var(--u));
+    }
+
+    .footer-app-icon {
+      width: calc(22 * var(--u));
+      height: calc(22 * var(--u));
+      border-radius: calc(5 * var(--u));
+      /* Camouflaged in cream background tone */
+      filter: grayscale(100%) sepia(80%) hue-rotate(5deg) brightness(0.92) opacity(0.32);
+      transition: filter 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+                  opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+                  transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    /* Reveal full vibrant colors on footer hover */
+    .site-footer:hover .footer-app-icon {
+      filter: none;
+      opacity: 1;
+      transform: scale(1.15);
+    }
+
+    .footer-app-name {
+      font-size: calc(14.5 * var(--u));
+      font-weight: 600;
+      color: var(--ink);
+      letter-spacing: -0.015em;
+    }
+
+    .footer-meta {
+      font-size: calc(13.5 * var(--u));
+      color: var(--ink-secondary);
+    }
+
+    .footer-link {
+      color: var(--ink);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      text-decoration-color: rgba(13, 13, 12, 0.25);
+      font-weight: 500;
+      transition: text-decoration-color 0.2s ease, opacity 0.2s ease;
+    }
+
+    .footer-link:hover {
+      text-decoration-color: var(--ink);
+      opacity: 0.8;
+    }
+
+
+    .stats-quote {
+      font-size: calc(29 * var(--u));
+      font-weight: 500;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      color: var(--ink);
+    }
+
+    .stats-metrics {
+      display: flex;
+      align-items: flex-start;
+      gap: calc(56 * var(--u));
+    }
+
+    .metric-card {
+      display: flex;
+      flex-direction: column;
+      gap: calc(4 * var(--u));
+    }
+
+    .metric-value {
+      font-size: calc(54 * var(--u));
+      font-weight: 500;
+      line-height: 1;
+      letter-spacing: -0.025em;
+      color: var(--ink);
+    }
+
+    .metric-label {
+      font-size: calc(16.5 * var(--u));
+      font-weight: 400;
+      color: var(--ink-secondary);
+    }
+
+    .stats-planet,
+    .stats-sprout {
+      width: calc(48 * var(--u));
+      height: calc(48 * var(--u));
+      stroke: var(--ink);
+      stroke-width: 1.4;
+      fill: none;
+      opacity: 0.65;
+      align-self: flex-start;
+      margin-top: calc(4 * var(--u));
+    }
+
+    /* ─── LAYER 2: MANAGEMENT & DOCUMENTATION (100vh Fullscreen View) ─── */
+    #layerGuide {
+      background-color: var(--cream);
+      display: flex;
+      flex-direction: column;
+      padding: 0;
+      z-index: 25;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Subtle ambient pastel glow for Layer 2 in Vela style */
+    #layerGuide::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: 
+        radial-gradient(circle at 82% 16%, rgba(249, 203, 169, 0.28) 0%, rgba(249, 203, 169, 0) 52%),
+        radial-gradient(circle at 18% 88%, rgba(223, 233, 212, 0.32) 0%, rgba(223, 233, 212, 0) 55%);
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    /* Fine SVG Grain Overlay for Layer 2 */
+    .guide-grain {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.12;
+      mix-blend-mode: multiply;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 240 240' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+      z-index: 2;
+    }
+
+    /* Layer 2 Main Content Container */
+    .guide-layer-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      max-width: 1140px;
+      width: 100%;
+      margin: 0 auto;
+      padding: clamp(24px, 3.2vh, 38px) clamp(20px, 4vw, 48px) 24px clamp(20px, 4vw, 48px);
+      overflow: hidden;
+      position: relative;
+      z-index: 3;
+    }
+
+    /* Title Row with Integrated Back Button on Layer 2 */
+    .guide-title-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 20px;
+      flex-shrink: 0;
+    }
+
+    .back-hero-btn {
+      position: static !important;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 255, 255, 0.85);
+      border: 1.4px solid rgba(13, 13, 12, 0.18);
+      color: var(--ink);
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+                  background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+                  transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+                  box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .back-hero-btn:hover {
+      border-color: var(--ink);
+      background-color: var(--ink);
+      color: #FFFFFF;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .back-hero-btn svg {
+      width: 18px;
+      height: 18px;
+      stroke: currentColor;
+      flex-shrink: 0;
+    }
+
+    .guide-title-text h2 {
+      font-size: clamp(24px, 2.3vw, 36px);
+      font-weight: 500;
+      letter-spacing: -0.025em;
+      line-height: 1.2;
+      color: var(--ink);
+    }
+
+    .guide-title-text p {
+      font-size: clamp(13.5px, 1.05vw, 15px);
+      color: var(--ink-secondary);
+      margin-top: 4px;
+    }
+
+    /* Pills Nav Switcher - Flexible wrap, no horizontal clipping, zero jump */
+    .guide-pills {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 20px;
+      padding: 4px 0;
+      flex-shrink: 0;
+    }
+
+    .guide-pill {
+      padding: 8px 16px;
+      border-radius: 999px;
+      border: 1.4px solid rgba(13, 13, 12, 0.16);
+      background: rgba(255, 255, 255, 0.65);
+      font-family: inherit;
+      font-size: 13.5px;
+      font-weight: 500;
+      color: var(--ink-secondary);
+      cursor: pointer;
+      transition: border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+                  background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+                  color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+                  box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .guide-pill:hover {
+      border-color: var(--ink);
+      color: var(--ink);
+      background: rgba(255, 255, 255, 0.95);
+      /* Zero vertical transform: eliminates top-border clipping */
+    }
+
+    .guide-pill.active {
+      background: var(--ink);
+      color: #FFFFFF;
+      border-color: var(--ink);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+    }
+
+    .guide-pill.active .pill-icon {
+      stroke: #FFFFFF;
+    }
+
+    .pill-icon {
+      width: 15px;
+      height: 15px;
+      stroke: currentColor;
+      flex-shrink: 0;
+      transition: stroke 0.2s ease;
+    }
+
+    /* Scrollable Content View - Pure Typography, No Nested Box Containers */
+    .guide-content-scroll {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding-right: 12px;
+      scrollbar-gutter: stable;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(13, 13, 12, 0.2) transparent;
+      background: rgba(255, 255, 255, 0.55);
+      border-radius: 20px;
+      padding: clamp(24px, 3.2vw, 42px);
+      border: 1.4px solid rgba(13, 13, 12, 0.08);
+      box-shadow: none;
+    }
+
+    .guide-content-scroll::-webkit-scrollbar {
+      width: 6px;
+    }
+    .guide-content-scroll::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .guide-content-scroll::-webkit-scrollbar-thumb {
+      background-color: rgba(13, 13, 12, 0.2);
+      border-radius: 999px;
+    }
+    .guide-content-scroll::-webkit-scrollbar-thumb:hover {
+      background-color: rgba(13, 13, 12, 0.45);
+    }
+
+    .tab-pane {
+      display: none;
+      animation: tabFadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .tab-pane.active {
+      display: block;
+    }
+
+    @keyframes tabFadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(4px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* Direct Guide Typography */
+    .tab-pane h3 {
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: -0.015em;
+      color: var(--ink);
+      margin-bottom: 10px;
+    }
+
+    .tab-pane h4 {
+      font-size: 16.5px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: var(--ink);
+      margin-top: 24px;
+      margin-bottom: 8px;
+    }
+
+    .tab-pane p {
+      font-size: 15px;
+      line-height: 1.6;
+      color: var(--ink-secondary);
+      margin-bottom: 12px;
+    }
+
+    .tab-pane ul {
+      margin: 10px 0 16px 22px;
+      line-height: 1.65;
+      color: var(--ink-secondary);
+    }
+
+    .tab-pane li {
+      font-size: 14.5px;
+      margin-bottom: 6px;
+    }
+
+    .tab-pane strong {
+      color: var(--ink);
+      font-weight: 600;
+    }
+
+    .spec-row, .spec-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin: 16px 0 20px 0;
+      border: none !important;
+      background: transparent !important;
+      padding: 0 !important;
+    }
+
+    .spec-pill-item, .spec-row > div {
+      flex: 1 1 calc(50% - 12px);
+      min-width: 240px;
+      background: rgba(13, 13, 12, 0.045);
+      border-radius: 14px;
+      padding: 14px 18px;
+      font-size: 13.5px;
+      line-height: 1.55;
+      color: var(--ink-secondary);
+      border: none !important;
+      transition: background 0.2s ease, transform 0.15s ease;
+    }
+
+    .spec-pill-item:hover, .spec-row > div:hover {
+      background: rgba(13, 13, 12, 0.07);
+      transform: none;
+    }
+
+    .services-columns {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 28px;
+      margin-top: 14px;
+    }
+
+    .services-columns h4 {
+      margin-top: 0;
+      margin-bottom: 8px;
+    }
+
+    /* White Code Block Styling */
+    .code-block {
+      background: #FFFFFF;
+      color: var(--ink);
+      border-radius: 12px;
+      padding: 14px 18px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 13px;
+      margin: 14px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      border: 1.4px solid rgba(13, 13, 12, 0.12);
+      box-shadow: 0 2px 10px rgba(13, 13, 12, 0.03);
+    }
+
+    .code-block code {
+      word-break: break-all;
+      color: var(--ink);
+      font-weight: 500;
+      background: transparent;
+      padding: 0;
+    }
+
+    .copy-btn {
+      background: rgba(13, 13, 12, 0.05);
+      border: 1.4px solid rgba(13, 13, 12, 0.16);
+      color: var(--ink);
+      padding: 7px 15px;
+      border-radius: 7px;
+      font-size: 12.5px;
+      font-family: inherit;
+      font-weight: 500;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .copy-btn:hover {
+      background: var(--ink);
+      color: #FFFFFF;
+      border-color: var(--ink);
+    }
+
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.9em;
+      background: rgba(13, 13, 12, 0.06);
+      padding: 2px 6px;
+      border-radius: 5px;
+      color: var(--ink);
+    }
+
+    /* ─── MOBILE RESPONSIVE OPTIMIZATION (<= 768px) ─── */
+    @media (max-width: 768px) {
+      html, body {
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        height: auto !important;
+        min-height: 100vh !important;
+      }
+
+      .app-viewport {
+        height: auto !important;
+        min-height: 100vh !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        position: relative !important;
+      }
+
+      /* ─── LAYER 1: MOBILE HERO PRESENTATION ─── */
+      #layerHero {
+        position: relative !important;
+        height: auto !important;
+        min-height: 100vh !important;
+        overflow: visible !important;
+        display: flex !important;
+        flex-direction: column !important;
+      }
+
+      .hero-panel {
+        position: relative !important;
+        height: auto !important;
+        min-height: unset !important;
+        padding: 0 20px 48px 20px !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: flex-start !important;
+        box-sizing: border-box !important;
+      }
+
+      /* Top Navigation: Clean & Legible */
+      .top-nav {
+        position: relative !important;
+        height: 64px !important;
+        padding: 0 !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        width: 100% !important;
+        z-index: 10 !important;
+      }
+
+      .brand-group {
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 10px !important;
+      }
+
+      .brand-dot {
+        width: 10px !important;
+        height: 10px !important;
+        border-radius: 50% !important;
+      }
+
+      .brand-name {
+        font-size: 21px !important;
+        font-weight: 600 !important;
+        letter-spacing: -0.02em !important;
+        color: var(--ink) !important;
+      }
+
+      .nav-btn {
+        height: 38px !important;
+        padding: 0 16px !important;
+        font-size: 14px !important;
+        font-weight: 500 !important;
+        border-radius: 999px !important;
+        border: 1.4px solid var(--ink) !important;
+        background: transparent !important;
+        color: var(--ink) !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        cursor: pointer !important;
+      }
+
+      .nav-btn:hover {
+        background-color: var(--ink) !important;
+        color: #FFFFFF !important;
+        transform: none !important;
+      }
+
+      /* Headline: Compact, Bold, Natural Spacing */
+      .headline-container {
+        position: relative !important;
+        left: auto !important;
+        top: auto !important;
+        margin-top: 24px !important;
+        padding: 0 !important;
+        width: 100% !important;
+      }
+
+      .headline {
+        font-size: clamp(38px, 10.5vw, 48px) !important;
+        line-height: 1.0 !important;
+        letter-spacing: -0.03em !important;
+      }
+
+      .headline-row-dynamic {
+        min-height: clamp(42px, 11vw, 52px) !important;
+      }
+
+      .word-slot {
+        gap: 0.12em !important;
+      }
+
+      .icon-wrapper {
+        width: 0.95em !important;
+        height: 0.95em !important;
+      }
+
+      .headline-row-static {
+        margin-top: 8px !important;
+        white-space: normal !important;
+      }
+
+      /* Action Row: No Empty Void! Sits naturally 22px below headline */
+      .action-row {
+        position: relative !important;
+        left: auto !important;
+        top: auto !important;
+        width: 100% !important;
+        padding: 0 !important;
+        margin-top: 22px !important;
+        margin-bottom: 8px !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 12px !important;
+      }
+
+      .action-buttons {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important;
+        gap: 10px !important;
+        width: 100% !important;
+      }
+
+      #windowsStoreBtn {
+        grid-column: 1 / -1 !important;
+        height: 50px !important;
+        font-size: 15px !important;
+        font-weight: 500 !important;
+        padding: 0 16px !important;
+        justify-content: center !important;
+        border-radius: 12px !important;
+      }
+
+      #omarchyWidgetBtn {
+        height: 44px !important;
+        font-size: 13.5px !important;
+        padding: 0 12px !important;
+        justify-content: center !important;
+        border-radius: 10px !important;
+      }
+
+      .action-buttons a:last-child {
+        height: 44px !important;
+        font-size: 13.5px !important;
+        padding: 0 12px !important;
+        justify-content: center !important;
+        border-radius: 10px !important;
+        display: inline-flex !important;
+      }
+
+      .action-caption {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        font-size: 14px !important;
+        line-height: 1.45 !important;
+        color: var(--ink-secondary) !important;
+        margin-top: 10px !important;
+        display: block !important;
+      }
+
+      /* Notch on Mobile: S-Curve smoothly bridging Hero to Stats */
+      .notch-svg-wrap {
+        display: block !important;
+        position: absolute !important;
+        bottom: calc(100% - 1px) !important;
+        left: 0 !important;
+        width: 100% !important;
+        height: 38px !important;
+        line-height: 0 !important;
+        pointer-events: none !important;
+        z-index: 10 !important;
+      }
+
+      .notch-desktop {
+        display: none !important;
+      }
+
+      .notch-mobile {
+        display: block !important;
+        width: 100% !important;
+        height: 100% !important;
+      }
+
+      /* Raised Lip Trigger on Notch */
+      .scroll-hint-tab {
+        position: absolute !important;
+        right: 18px !important;
+        bottom: calc(100% + 8px) !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: transparent !important;
+        border: none !important;
+        color: var(--ink) !important;
+        font-size: 13.5px !important;
+        font-weight: 500 !important;
+        z-index: 15 !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 5px !important;
+        cursor: pointer !important;
+      }
+
+      /* ─── STATS STRIP ON MOBILE: Full Screen Bottom Pinning ─── */
+      .stats-strip {
+        position: relative !important;
+        flex: 1 0 auto !important;
+        height: auto !important;
+        min-height: unset !important;
+        bottom: auto !important;
+        left: auto !important;
+        width: 100% !important;
+        padding: 20px 20px 0 20px !important;
+        background-color: var(--cream) !important;
+        box-sizing: border-box !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: space-between !important;
+        gap: 16px !important;
+        z-index: 5 !important;
+      }
+
+      .stats-content {
+        position: relative !important;
+        height: auto !important;
+        padding: 0 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 16px !important;
+      }
+
+      .stats-quote {
+        font-size: 22px !important;
+        font-weight: 500 !important;
+        line-height: 1.25 !important;
+        letter-spacing: -0.015em !important;
+        color: var(--ink) !important;
+      }
+
+      .stats-metrics {
+        display: grid !important;
+        grid-template-columns: repeat(3, 1fr) !important;
+        gap: 12px !important;
+        width: 100% !important;
+        background: rgba(13, 13, 12, 0.035) !important;
+        padding: 16px 14px !important;
+        border-radius: 14px !important;
+        box-sizing: border-box !important;
+      }
+
+      .metric-card {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 3px !important;
+      }
+
+      .metric-value {
+        font-size: 22px !important;
+        font-weight: 600 !important;
+        color: var(--ink) !important;
+        letter-spacing: -0.02em !important;
+      }
+
+      .metric-label {
+        font-size: 11px !important;
+        line-height: 1.3 !important;
+        color: var(--ink-secondary) !important;
+      }
+
+      /* Planet Icon on Mobile: Harmoniously positioned opposite the stats heading */
+      .stats-planet,
+      .stats-sprout {
+        display: block !important;
+        position: absolute !important;
+        top: 2px !important;
+        right: 4px !important;
+        width: 44px !important;
+        height: 44px !important;
+        stroke: var(--ink) !important;
+        stroke-width: 1.8 !important;
+        fill: none !important;
+        opacity: 0.65 !important;
+        margin: 0 !important;
+        align-self: auto !important;
+      }
+
+      /* ─── SITE FOOTER ON MOBILE: Pinned to Absolute Bottom with Safe-Area Padding ─── */
+      .site-footer {
+        margin-top: auto !important;
+        height: auto !important;
+        padding: 20px 0 max(24px, env(safe-area-inset-bottom)) 0 !important;
+        border: none !important;
+        background-color: var(--cream) !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 8px !important;
+      }
+
+      .footer-brand {
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 10px !important;
+      }
+
+      .footer-app-icon {
+        width: 26px !important;
+        height: 26px !important;
+        border-radius: 6px !important;
+        filter: none !important;
+        opacity: 0.9 !important;
+      }
+
+      .footer-app-name {
+        font-size: 16px !important;
+        font-weight: 600 !important;
+        color: var(--ink) !important;
+        letter-spacing: -0.015em !important;
+      }
+
+      .footer-meta {
+        font-size: 14px !important;
+        color: var(--ink-secondary) !important;
+      }
+
+      .footer-link {
+        color: var(--ink) !important;
+        font-size: 14px !important;
+        font-weight: 500 !important;
+      }
+
+      /* ─── MOBILE LAYER 2: GUIDE VIEW ─── */
+      #layerGuide {
+        position: absolute !important;
+        inset: 0 !important;
+        height: 100vh !important;
+        height: 100dvh !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+      }
+
+      .guide-layer-body {
+        padding: 18px 16px max(24px, env(safe-area-inset-bottom)) 16px !important;
+      }
+
+      .guide-title-row {
+        display: flex !important;
+        align-items: center !important;
+        gap: 12px !important;
+        margin-bottom: 16px !important;
+      }
+
+      .back-hero-btn {
+        width: 40px !important;
+        height: 40px !important;
+        flex-shrink: 0 !important;
+      }
+
+      .back-hero-btn svg {
+        width: 18px !important;
+        height: 18px !important;
+      }
+
+      .guide-title-text h2 {
+        font-size: 20px !important;
+        line-height: 1.25 !important;
+      }
+
+      .guide-title-text p {
+        font-size: 13px !important;
+        line-height: 1.4 !important;
+      }
+
+      .guide-pills {
+        gap: 8px !important;
+        margin-bottom: 16px !important;
+        padding: 4px 0 !important;
+      }
+
+      .guide-pill {
+        padding: 8px 14px !important;
+        font-size: 13px !important;
+      }
+
+      .guide-content-scroll {
+        padding: 18px 14px !important;
+      }
+
+      .code-block {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 10px !important;
+        padding: 14px !important;
+      }
+
+      .copy-btn {
+        width: 100% !important;
+        height: 36px !important;
+        font-size: 13.5px !important;
+      }
+    }
+
+    /* Reduced Motion */
+    @media (prefers-reduced-motion: reduce) {
+      .gradient-layer, .icon-float-wrapper, .word-slot, .icon-wrapper, .page-layer {
+        animation: none !important;
+        transition: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Full-viewport zero-scrollbar app container -->
+  <div class="app-viewport">
+
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!-- ─── LAYER 1: HERO PRESENTATION VIEW (100vh / Zero Scroll) ─────── -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <main class="page-layer active" id="layerHero" aria-label="Proxy Router Презентация">
+
+      <!-- Hero Panel (Top 75%) -->
+      <section class="hero-panel">
+
+        <!-- 4 Stacked Gradient Layers with 18% SVG Grain -->
+        <div class="gradient-layer layer-lemon active" data-index="0" aria-hidden="true"></div>
+        <div class="gradient-layer layer-peach" data-index="1" aria-hidden="true"></div>
+        <div class="gradient-layer layer-sage" data-index="2" aria-hidden="true"></div>
+        <div class="gradient-layer layer-lilac" data-index="3" aria-hidden="true"></div>
+
+        <!-- Fine SVG Fractal-Noise Grain -->
+        <div class="grain-overlay" aria-hidden="true"></div>
+
+      <!-- ─── TOP NAVIGATION HEADER ─── -->
+      <header class="top-nav">
+        <a href="#" class="brand-group" aria-label="Proxy Router">
+          <span class="brand-dot"></span>
+          <span class="brand-name">Proxy Router</span>
+        </a>
+
+        <div class="nav-actions">
+          <button class="nav-btn" id="headerDocsBtn" type="button" aria-label="Открыть документацию">
+            Документация
+          </button>
+        </div>
+      </header>
+
+        <!-- Headline (Dynamic Cycling 3D Word + Static Row) -->
+        <div class="headline-container">
+          <h1 class="headline">
+            <span class="headline-row-dynamic">
+              <span class="word-slot" id="slotContainer">
+                <span class="icon-wrapper" id="heroIconWrap">
+                  <span class="icon-float-wrapper">
+                    <img class="icon-img" id="heroIconImg" src="assets/icon-chat.webp" alt="" />
+                    <span class="icon-tint-layer" id="heroIconTint"></span>
+                  </span>
+                </span>
+                <span class="dynamic-word" id="heroWord">Общайся</span>
+              </span>
+            </span>
+            <span class="headline-row-static">на твоих условиях</span>
+          </h1>
+        </div>
+
+        <!-- Action Row (Buttons + Caption) -->
+        <div class="action-row">
+          <div class="action-buttons">
+            <a href="https://github.com/D1verlin/ProxyRouterDesktop/releases/download/v1.0.21/Proxy.Router.Desktop_1.0.21_x64-setup.exe" target="_blank" rel="noopener" class="action-btn" id="windowsStoreBtn">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/>
+              </svg>
+              <span>Windows (x64) • v1.0.21 .exe</span>
+            </a>
+
+            <a class="action-btn" id="omarchyWidgetBtn" role="button" tabindex="0">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 2.5L2 21.5h20L12 2.5zm0 4.8l5.9 11.4H6.1L12 7.3zm-1 3.2v4.5h2v-4.5h-2zm0 6v2h2v-2h-2z"/>
+              </svg>
+              <span>Omarchy Linux</span>
+            </a>
+
+            <a href="https://github.com/D1verlin/ProxyRouterDesktop" target="_blank" rel="noopener" class="action-btn">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+              </svg>
+              <span>GitHub</span>
+            </a>
+          </div>
+
+          <div class="action-caption">
+            Выборочное проксирование трафика в ядре nftables: ускоряйте заблокированные сервисы через VPS, сохраняя прямой доступ и нулевой пинг для банков и игр.
+          </div>
+        </div>
+      </section>
+
+      <!-- Stats Strip (Bottom 25% of Hero) -->
+      <footer class="stats-strip" aria-label="Метрики и производительность">
+        
+        <!-- S-Curve Notch SVG (Desktop and Mobile Tailored) -->
+        <div class="notch-svg-wrap" aria-hidden="true">
+          <!-- Desktop Notch: Compact shelf matching short text -->
+          <svg class="notch-svg notch-desktop" viewBox="0 0 1440 62" preserveAspectRatio="none">
+            <path d="M0 62 H1200 C1222 62 1228 52 1240 32 C1250 12 1254 1 1266 1 H1440 V62 Z" fill="#FBF6EF"/>
+          </svg>
+          <!-- Mobile Notch: Extended shelf wide enough to fully hold 'Документация ↓' -->
+          <svg class="notch-svg notch-mobile" viewBox="0 0 375 32" preserveAspectRatio="none">
+            <path d="M0 32 H185 C200 32 206 26 215 16 C223 6 226 1 234 1 H375 V32 Z" fill="#FBF6EF"/>
+          </svg>
+        </div>
+
+        <!-- Switch to Layer 2 Trigger on Raised Notch Lip -->
+        <a class="scroll-hint-tab" id="openDocsTrigger" role="button" tabindex="0">
+          <span>Документация</span>
+          <span class="scroll-hint-arrow">↓</span>
+        </a>
+
+        <!-- Content -->
+        <div class="stats-content">
+          <div class="stats-quote">
+            Трафик под полным<br>контролем
+          </div>
+
+          <div class="stats-metrics">
+            <div class="metric-card">
+              <span class="metric-value">0.001с</span>
+              <span class="metric-label">Задержка ядра nftables</span>
+            </div>
+
+            <div class="metric-card">
+              <span class="metric-value">~15 МБ</span>
+              <span class="metric-label">ОЗУ на VPS-сервере</span>
+            </div>
+
+            <div class="metric-card">
+              <span class="metric-value">100%</span>
+              <span class="metric-label">Приватность и no-logs</span>
+            </div>
+          </div>
+
+          <!-- Line-art planet -->
+          <svg class="stats-planet stats-sprout" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="24" cy="24" r="14"/>
+            <path d="M37.63 27.16c4.58 4.28 7.09 8 6.18 9.8-1.49 2.92-11.57-.52-22.51-7.68-10.94-7.16-18.61-15.33-17.12-18.25.93-1.82 5.85-.89 11.61 1.61"/>
+          </svg>
+        </div>
+        <!-- ─── SITE FOOTER (NO BORDER, SAME BACKGROUND COLOR #FBF6EF) ─── -->
+        <div class="site-footer" id="siteFooter">
+          <div class="footer-brand">
+            <img src="Proxy Router.svg" class="footer-app-icon" alt="Proxy Router" width="22" height="22">
+            <span class="footer-app-name">Proxy Router</span>
+          </div>
+          <div class="footer-meta">
+            <span class="footer-author">Автор проекта: <a href="https://diverlin.ru" target="_blank" rel="noopener" class="footer-link">diverlin.ru</a></span>
+          </div>
+        </div>
+      </footer>
+    </main>
+
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!-- ─── LAYER 2: MANAGEMENT & DOCUMENTATION VIEW (100vh Fullscreen) ─ -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <section class="page-layer" id="layerGuide" aria-label="Proxy Router Центр управления и документация">
+      
+      <!-- Fine SVG Grain Overlay for Layer 2 -->
+      <div class="guide-grain" aria-hidden="true"></div>
+
+      <!-- Layer 2 Body -->
+      <div class="guide-layer-body">
+
+        <!-- Title row with Integrated Back Button on Layer 2 -->
+        <div class="guide-title-row">
+          <button class="back-hero-btn" id="backToHeroBtn" aria-label="Назад к презентации" title="Назад к презентации (Esc)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M19 12H5M12 19l-7-7 7-7"/>
+            </svg>
+          </button>
+          <div class="guide-title-text">
+            <h2>Центр управления и документация</h2>
+            <p>Пошаговые инструкции по настройке сервера VPS (GOST v3), десктопного клиента и виджета для Linux.</p>
+          </div>
+        </div>
+
+        <!-- Pills nav switcher -->
+        <nav class="guide-pills" aria-label="Разделы документации">
+          <button class="guide-pill active" data-target="tab-quickstart">
+            <svg class="pill-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="2" y="3" width="20" height="7" rx="2"/>
+              <rect x="2" y="14" width="20" height="7" rx="2"/>
+              <circle cx="6" cy="6.5" r="1" fill="currentColor"/>
+              <circle cx="6" cy="17.5" r="1" fill="currentColor"/>
+              <path d="M10 6.5h8M10 17.5h8"/>
+            </svg>
+            <span>VPS (GOST v3)</span>
+          </button>
+          <button class="guide-pill" data-target="tab-windows">
+            <svg class="pill-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="16" rx="2"/>
+              <path d="M3 9h18M7 6.5h.01M10 6.5h.01"/>
+            </svg>
+            <span>Windows</span>
+          </button>
+          <button class="guide-pill" data-target="tab-omarchy">
+            <svg class="pill-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="4 17 10 11 4 5"/>
+              <line x1="12" y1="19" x2="20" y2="19"/>
+            </svg>
+            <span>Omarchy Linux</span>
+          </button>
+          <button class="guide-pill" data-target="tab-telegram">
+            <svg class="pill-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+            </svg>
+            <span>Telegram-бот</span>
+          </button>
+        </nav>
+
+        <!-- Scrollable content box (Clean Typography, No Second Container) -->
+        <div class="guide-content-scroll">
+          
+          <!-- Tab 1: Сервер VPS -->
+          <div class="tab-pane active" id="tab-quickstart">
+            <h3>Автоматическая установка GOST v3 + nftables на VPS</h3>
+            <p>Поддерживаемые ОС: <strong>Ubuntu 20.04 / 22.04 / 24.04</strong> или <strong>Debian 11 / 12</strong>. Скрипт разворачивает бинарник GOST v3, генерирует TLS-сертификаты, активирует скрытый файрвол nftables и REST API для авторизации IP клиентов.</p>
+            <div class="code-block">
+              <code>git clone https://github.com/D1verlin/ProxyRouterDesktop.git /opt/proxy-router && cd /opt/proxy-router/deploy-gost && chmod +x install.sh && sudo ./install.sh</code>
+              <button class="copy-btn" onclick="navigator.clipboard.writeText('git clone https://github.com/D1verlin/ProxyRouterDesktop.git /opt/proxy-router && cd /opt/proxy-router/deploy-gost && chmod +x install.sh && sudo ./install.sh'); this.innerText='Скопировано!'; setTimeout(()=>this.innerText='Копировать', 2000)">Копировать</button>
+            </div>
+            
+            <h4>Активные порты и защита сетевого стека</h4>
+            <div class="spec-row">
+              <div>
+                <strong>HTTP-прокси:</strong> порт <code>3128</code><br>
+                <strong>HTTPS (TLS) прокси:</strong> порт <code>8443</code><br>
+                <strong>SOCKS5-прокси:</strong> порт <code>1080</code>
+              </div>
+              <div>
+                <strong>Whitelist REST API:</strong> порт <code>1135</code><br>
+                <strong>Токен авторизации:</strong> <code>/etc/gost/api_token.txt</code><br>
+                <strong>Файрвол:</strong> Stealth nftables (чужие IP отбрасываются через DROP)
+              </div>
+            </div>
+            <div class="code-block">
+              <code>systemctl status gost.service whitelist-api.service</code>
+              <button class="copy-btn" onclick="navigator.clipboard.writeText('systemctl status gost.service whitelist-api.service'); this.innerText='Скопировано!'; setTimeout(()=>this.innerText='Копировать', 2000)">Копировать</button>
+            </div>
+          </div>
+
+          <!-- Tab 2: Клиент Windows -->
+          <div class="tab-pane" id="tab-windows">
+            <h3>Настройка Proxy Router Desktop для Windows</h3>
+            <p>1. Скачайте последнюю версию приложения из <a href="https://github.com/D1verlin/ProxyRouterDesktop/releases" target="_blank" style="color: var(--ink); font-weight: 600;">Releases на GitHub</a> и установите его.</p>
+            <p>2. Откройте вкладку <strong>Настройки</strong> в приложении:</p>
+            <ul>
+              <li><strong>Хост сервера:</strong> IP-адрес вашего VPS сервера.</li>
+              <li><strong>API URL:</strong> <code>http://YOUR_SERVER_IP:1135</code></li>
+              <li><strong>Токен авторизации:</strong> секретный токен из <code>/etc/gost/api_token.txt</code>.</li>
+              <li><strong>Протокол:</strong> выберите <code>HTTP (порт 3128)</code> или <code>SOCKS5 (порт 1080)</code>.</li>
+            </ul>
+            <p>3. Включите <strong>Авто-вайтлист (Auto Whitelist)</strong> — приложение само будет отправлять ваш домашний IP на сервер при запуске.</p>
+            
+            <div class="spec-row">
+              <div>
+                <strong>PAC-режим (:8182):</strong> идеален для браузеров. Браузер сам перенаправляет только заданные домены, весь остальной интернет идет напрямую.
+              </div>
+              <div>
+                <strong>Forwarder-режим (:8183):</strong> глобальный перехват трафика для Discord, Telegram Desktop, терминалов и IDE.
+              </div>
+            </div>
+          </div>
+
+          <!-- Tab 3: Виджет Omarchy Linux -->
+          <div class="tab-pane" id="tab-omarchy">
+            <h3>Виджет верхней панели Omarchy Linux с 3D Кибер-Планетой</h3>
+            <p>Минималистичный нативный виджет для <strong>Omarchy / Hyprland / Quickshell</strong>. Отображает интерактивную 3D кибер-планетку (Dot-Matrix Earth Sphere), статус подключения (<code>ON</code> / <code>OFF</code> / <code>AUTH...</code>), задержку до VPS в мс и текущий внешний IP.</p>
+            
+            <h4>Установка и регистрация виджета</h4>
+            <div class="code-block">
+              <code>cd ~/projects && git clone https://github.com/D1verlin/ProxyRouterDesktop.git && cd ProxyRouterDesktop/omarchy-widget && chmod +x install.sh && ./install.sh</code>
+              <button class="copy-btn" onclick="navigator.clipboard.writeText('cd ~/projects && git clone https://github.com/D1verlin/ProxyRouterDesktop.git && cd ProxyRouterDesktop/omarchy-widget && chmod +x install.sh && ./install.sh'); this.innerText='Скопировано!'; setTimeout(()=>this.innerText='Копировать', 2000)">Копировать</button>
+            </div>
+            
+            <h4>Конфигурация (~/.config/proxy-router/settings.json)</h4>
+            <div class="code-block">
+              <code>proxy_router_ctl.py config</code>
+              <button class="copy-btn" onclick="navigator.clipboard.writeText('proxy_router_ctl.py config'); this.innerText='Скопировано!'; setTimeout(()=>this.innerText='Копировать', 2000)">Копировать</button>
+            </div>
+            <p style="font-size: 14px; color: var(--ink-secondary);">Укажите <code>server.host</code>, <code>server.apiUrl</code> и <code>server.authToken</code> в открывшемся файле.</p>
+            
+            <h4>Управление через CLI и горячие клавиши</h4>
+            <div class="spec-row">
+              <div>
+                <code>proxy_router_ctl.py list</code> — статус сервисов<br>
+                <code>proxy_router_ctl.py enable &lt;id&gt;</code> — включить<br>
+                <code>proxy_router_ctl.py connect</code> — коннект<br>
+                <code>proxy_router_ctl.py disconnect</code> — отключить
+              </div>
+              <div>
+                <strong>Omarchy IPC & Hyprland:</strong><br>
+                <code>omarchy-shell proxy-router toggle</code><br>
+                Добавьте в <code>hyprland.conf</code>:<br>
+                <code>bind = $mainMod, P, exec, omarchy-shell proxy-router toggle</code>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tab 4: Telegram-бот -->
+          <div class="tab-pane" id="tab-telegram">
+            <h3>Управление вайтлистом через Telegram-бота</h3>
+            <p>Бот позволяет моментально авторизовывать ваш IP с любого устройства (смартфон, ноутбук) нажатием одной кнопки в Telegram без входа по SSH.</p>
+            <p>1. Создайте бота в <a href="https://t.me/BotFather" target="_blank" style="color: var(--ink); font-weight: 600;">@BotFather</a> и скопируйте токен.</p>
+            <p>2. Настройте конфигурационный файл на сервере:</p>
+            <div class="code-block">
+              <code>cd /opt/proxy-router/deploy-gost/tg-bot && cp .env.example .env && nano .env</code>
+              <button class="copy-btn" onclick="navigator.clipboard.writeText('cd /opt/proxy-router/deploy-gost/tg-bot && cp .env.example .env && nano .env'); this.innerText='Скопировано!'; setTimeout(()=>this.innerText='Копировать', 2000)">Копировать</button>
+            </div>
+            <p>3. Запустите системную службу бота:</p>
+            <div class="code-block">
+              <code>systemctl enable --now tg-bot.service && systemctl status tg-bot.service</code>
+              <button class="copy-btn" onclick="navigator.clipboard.writeText('systemctl enable --now tg-bot.service && systemctl status tg-bot.service'); this.innerText='Скопировано!'; setTimeout(()=>this.innerText='Копировать', 2000)">Копировать</button>
+            </div>
+            <p><strong>Команды бота:</strong> <code>/start</code> — главное меню, <code>/my_ip</code> — авторизация в 1 клик, <code>/status</code> — список активных IP в вайтлисте.</p>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- ─── JAVASCRIPT ENGINE (Layer Switcher, Animated Hero Clock & Release Sync) ─── -->
+  <script>
+    (function() {
+      'use strict';
+
+      /* ─── 1. DYNAMIC CYCLING 3D HERO HEADLINE CLOCK ─── */
+      var STATES = [
+        {
+          word: 'Общайся',
+          icon: 'assets/icon-chat.webp',
+          tint: '#E9C22E', // Message yellow
+          layerIndex: 0
+        },
+        {
+          word: 'Сёрфи',
+          icon: 'assets/icon-surf.webp',
+          tint: '#F2772F', // Browse orange
+          layerIndex: 1
+        },
+        {
+          word: 'Работай',
+          icon: 'assets/icon-work.webp',
+          tint: '#3FB874', // Transact green
+          layerIndex: 2
+        },
+        {
+          word: 'Маршрутизируй',
+          icon: 'assets/icon-route.webp',
+          tint: '#C564C4', // Build web rose violet
+          layerIndex: 3
+        }
+      ];
+
+      var SLOT_DURATION = 3000; // 3.0 s per word (calm, readable, luxury pace)
+      var LEAVE_DURATION = 480;  // 0.48 s smooth fade-out drift
+      var TOTAL_STATES = STATES.length;
+
+      var currentIndex = 0;
+      var isPaused = false;
+      var slotTimeout = null;
+      var leaveTimeout = null;
+
+      var heroIconWrap = document.getElementById('heroIconWrap');
+      var heroIconImg = document.getElementById('heroIconImg');
+      var heroIconTint = document.getElementById('heroIconTint');
+      var heroWord = document.getElementById('heroWord');
+      var gradientLayers = document.querySelectorAll('.gradient-layer');
+      var windowsStoreBtn = document.getElementById('windowsStoreBtn');
+      var motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+      // Preload all 4 icons for instant zero-latency swap
+      STATES.forEach(function(s) {
+        var img = new Image();
+        img.src = s.icon;
+      });
+
+      function applyStateVisuals(idx) {
+        var s = STATES[idx];
+        if (!s) return;
+
+        // 1. Panel colour crossfades over 0.77s
+        gradientLayers.forEach(function(layer, i) {
+          if (i === s.layerIndex) {
+            layer.classList.add('active');
+          } else {
+            layer.classList.remove('active');
+          }
+        });
+
+        // 2. Set root CSS variables and update tint element directly
+        document.documentElement.style.setProperty('--current-tint', s.tint);
+        document.documentElement.style.setProperty('--current-mask', 'url("' + s.icon + '")');
+        if (heroIconTint) {
+          heroIconTint.style.backgroundColor = s.tint;
+          heroIconTint.style.webkitMaskImage = 'url("' + s.icon + '")';
+          heroIconTint.style.maskImage = 'url("' + s.icon + '")';
+        }
+
+        // 3. Update img src and word text
+        if (heroIconImg) heroIconImg.src = s.icon;
+        if (heroWord) heroWord.textContent = s.word;
+
+        // 4. Button flash effect during Word 3 (Маршрутизируй)
+        if (windowsStoreBtn) {
+          if (idx === 3) {
+            windowsStoreBtn.classList.add('flash-active');
+          } else {
+            windowsStoreBtn.classList.remove('flash-active');
+          }
+        }
+      }
+
+      function clearClockTimeouts() {
+        if (slotTimeout) {
+          clearTimeout(slotTimeout);
+          slotTimeout = null;
+        }
+        if (leaveTimeout) {
+          clearTimeout(leaveTimeout);
+          leaveTimeout = null;
+        }
+      }
+
+      function pauseClock() {
+        isPaused = true;
+        clearClockTimeouts();
+      }
+
+      function resumeClock() {
+        if (motionQuery.matches) return;
+        isPaused = false;
+        clearClockTimeouts();
+        triggerEnter(currentIndex);
+      }
+
+      function triggerEnter(idx) {
+        clearClockTimeouts();
+        applyStateVisuals(idx);
+
+        if (heroWord && heroIconWrap) {
+          heroWord.classList.remove('word-leave', 'word-enter');
+          heroIconWrap.classList.remove('icon-leave', 'icon-enter');
+          void heroWord.offsetWidth;
+          void heroIconWrap.offsetWidth;
+
+          heroWord.classList.add('word-enter');
+          heroIconWrap.classList.add('icon-enter');
+        }
+
+        slotTimeout = setTimeout(function() {
+          if (!isPaused) {
+            triggerLeave();
+          }
+        }, SLOT_DURATION - LEAVE_DURATION);
+      }
+
+      function triggerLeave() {
+        clearClockTimeouts();
+        if (heroWord && heroIconWrap) {
+          heroWord.classList.remove('word-enter');
+          heroWord.classList.add('word-leave');
+
+          heroIconWrap.classList.remove('icon-enter');
+          heroIconWrap.classList.add('icon-leave');
+        }
+
+        leaveTimeout = setTimeout(function() {
+          if (!isPaused) {
+            currentIndex = (currentIndex + 1) % TOTAL_STATES;
+            triggerEnter(currentIndex);
+          }
+        }, LEAVE_DURATION);
+      }
+
+      // Initial startup
+      if (motionQuery.matches) {
+        applyStateVisuals(1);
+      } else {
+        triggerEnter(0);
+      }
+
+      // Pause clock when tab is hidden, resume when visible
+      document.addEventListener('visibilitychange', function() {
+        if (document.hidden) {
+          pauseClock();
+        } else {
+          var layerHero = document.getElementById('layerHero');
+          if (layerHero && layerHero.classList.contains('active')) {
+            resumeClock();
+          }
+        }
+      });
+
+      /* ─── 2. DYNAMIC RELEASE VERSION & DIRECT .EXE SYNC ─── */
+      (function syncLatestRelease() {
+        var apiUrl = 'https://api.github.com/repos/D1verlin/ProxyRouterDesktop/releases/latest';
+        fetch(apiUrl)
+          .then(function(res) {
+            if (!res.ok) return null;
+            return res.json();
+          })
+          .then(function(data) {
+            if (!data || !data.tag_name) return;
+            var tag = data.tag_name; // e.g. "v1.0.21"
+            var assets = data.assets || [];
+            var setupExe = assets.find(function(a) { return a.name && a.name.endsWith('-setup.exe'); }) ||
+                           assets.find(function(a) { return a.name && a.name.endsWith('.exe'); });
+            var exeUrl = setupExe ? setupExe.browser_download_url : data.html_url;
+
+            var winBtn = document.getElementById('windowsStoreBtn');
+            if (winBtn) {
+              winBtn.href = exeUrl;
+              var labelSpan = winBtn.querySelector('span');
+              if (labelSpan) {
+                labelSpan.textContent = 'Windows (x64) • ' + tag + ' .exe';
+              }
+            }
+          })
+          .catch(function(err) {
+            // Graceful fallback to static v1.0.21 direct link
+          });
+      })();
+
+      /* ─── 3. TWO-LAYER SPA SWITCHER (Zero Window Scrollbar) ─── */
+      var layerHero = document.getElementById('layerHero');
+      var layerGuide = document.getElementById('layerGuide');
+      var backToHeroBtn = document.getElementById('backToHeroBtn');
+      var openDocsTrigger = document.getElementById('openDocsTrigger');
+      var omarchyWidgetBtn = document.getElementById('omarchyWidgetBtn');
+
+      var guidePills = document.querySelectorAll('.guide-pill');
+      var tabPanes = document.querySelectorAll('.tab-pane');
+
+      function activateTab(tabId) {
+        guidePills.forEach(function(pill) {
+          if (pill.getAttribute('data-target') === tabId) {
+            pill.classList.add('active');
+          } else {
+            pill.classList.remove('active');
+          }
+        });
+
+        tabPanes.forEach(function(pane) {
+          if (pane.id === tabId) {
+            pane.classList.add('active');
+          } else {
+            pane.classList.remove('active');
+          }
+        });
+      }
+
+      function switchLayer(targetLayer, tabId) {
+        if (targetLayer === 'guide') {
+          pauseClock();
+
+          if (tabId) {
+            activateTab(tabId);
+          }
+          if (layerHero) {
+            layerHero.classList.remove('active');
+            layerHero.classList.add('leaving');
+          }
+
+          setTimeout(function() {
+            if (layerGuide) {
+              layerGuide.classList.remove('leaving');
+              layerGuide.classList.add('active');
+            }
+          }, 60);
+
+        } else if (targetLayer === 'hero') {
+          if (layerGuide) {
+            layerGuide.classList.remove('active');
+            layerGuide.classList.add('leaving');
+          }
+
+          setTimeout(function() {
+            if (layerHero) {
+              layerHero.classList.remove('leaving');
+              layerHero.classList.add('active');
+            }
+            resumeClock();
+          }, 60);
+        }
+      }
+
+      // Layer 2 Pills switcher clicks
+      guidePills.forEach(function(pill) {
+        pill.addEventListener('click', function() {
+          var targetId = pill.getAttribute('data-target');
+          activateTab(targetId);
+        });
+      });
+
+      // Switch to Layer 2 (Omarchy tab)
+      if (omarchyWidgetBtn) {
+        omarchyWidgetBtn.addEventListener('click', function(e) {
+          e.preventDefault();
+          switchLayer('guide', 'tab-omarchy');
+        });
+      }
+
+      // Switch to Layer 2 (VPS tab)
+      
+      var headerDocsBtn = document.getElementById('headerDocsBtn');
+      if (headerDocsBtn) {
+        headerDocsBtn.addEventListener('click', function(e) {
+          e.preventDefault();
+          switchLayer('guide', 'tab-quickstart');
+        });
+      }
+
+      if (openDocsTrigger) {
+        openDocsTrigger.addEventListener('click', function(e) {
+          e.preventDefault();
+          switchLayer('guide', 'tab-quickstart');
+        });
+      }
+
+      // Back to Hero button
+      if (backToHeroBtn) {
+        backToHeroBtn.addEventListener('click', function(e) {
+          e.preventDefault();
+          switchLayer('hero');
+        });
+      }
+
+      // ESC key to return to Hero
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && layerGuide && layerGuide.classList.contains('active')) {
+          switchLayer('hero');
+        }
+      });
+
+    })();
+  </script>
+</body>
+</html>
