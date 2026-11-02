@@ -19,6 +19,8 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { useTauri } from '../hooks/useTauri';
+import { clayIcons } from '../assets/clayIcons';
+import ClayIcon from '../components/ClayIcon';
 import styles from './DnsSettings.module.css';
 
 const DNS_PRESETS = [
@@ -79,7 +81,8 @@ const DNS_PRESETS = [
 ];
 
 export default function DnsSettings() {
-  const { t, dispatch } = useAppStore();
+  const { state, t, dispatch } = useAppStore();
+  const isVela = state.customization?.theme === 'vela';
   const {
     getNetworkAdapters,
     setActiveDns,
@@ -315,14 +318,19 @@ export default function DnsSettings() {
     <div className={styles.page}>
       {/* Header */}
       <div className={styles.header}>
-        <div className={styles.titleArea}>
-          <h1 className={styles.title}>{t('dns.title', 'DNS Resolvers & Routing')}</h1>
-          <p className={styles.subtitle}>
-            {t(
-              'dns.subtitle',
-              'Manage upstream DNS servers, measure UDP query latency, and configure Windows adapter resolvers.'
-            )}
-          </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          {isVela && (
+            <ClayIcon icon={clayIcons.dns} tint="#C564C4" size={42} />
+          )}
+          <div className={styles.titleArea}>
+            <h1 className={styles.title}>{t('dns.title', 'DNS Resolvers & Routing')}</h1>
+            <p className={styles.subtitle}>
+              {t(
+                'dns.subtitle',
+                'Manage upstream DNS servers, measure UDP query latency, and configure Windows adapter resolvers.'
+              )}
+            </p>
+          </div>
         </div>
 
         <div className={styles.headerActions}>

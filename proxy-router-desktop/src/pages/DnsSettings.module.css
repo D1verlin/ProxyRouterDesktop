@@ -39,6 +39,12 @@
   gap: 10px;
 }
 
+.headerActions button {
+  white-space: nowrap !important;
+  padding: 0 16px;
+  flex-shrink: 0;
+}
+
 .section {
   display: flex;
   flex-direction: column;
@@ -179,7 +185,14 @@
 }
 
 .cardActions button {
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0 8px;
+  font-size: 12px;
+  white-space: nowrap !important;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Network Adapter Section */
@@ -354,6 +367,60 @@
 
 .spinning {
   animation: spin 1s linear infinite;
+}
+
+/* в”Ђв”Ђв”Ђ Vela Theme Light & Contrast Overrides в”Ђв”Ђв”Ђ */
+:global([data-theme="vela"]) .title {
+  color: #0D0D0C !important;
+  font-size: 20px !important;
+  font-weight: 600 !important;
+}
+
+:global([data-theme="vela"]) .subtitle {
+  color: rgba(13, 13, 12, 0.65) !important;
+  font-size: 13px !important;
+}
+
+:global([data-theme="vela"]) .presetCard,
+:global([data-theme="vela"]) .adapterCard,
+:global([data-theme="vela"]) .cardBlock,
+:global([data-theme="vela"]) .restoreCard {
+  background: rgba(255, 255, 255, 0.52) !important;
+  backdrop-filter: blur(16px) saturate(130%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(130%) !important;
+  border: 1.2px solid rgba(13, 13, 12, 0.09) !important;
+  box-shadow: 0 4px 20px rgba(13, 13, 12, 0.02) !important;
+}
+
+:global([data-theme="vela"]) .activeCard {
+  border-color: #0D0D0C !important;
+  box-shadow: 0 4px 14px rgba(13, 13, 12, 0.08) !important;
+}
+
+:global([data-theme="vela"]) .activeBadge {
+  background: #0D0D0C !important;
+  color: #FBF6EF !important;
+}
+
+:global([data-theme="vela"]) .latencyBadge,
+:global([data-theme="vela"]) .ipsBlock {
+  background: rgba(255, 255, 255, 0.40) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  border-color: rgba(13, 13, 12, 0.10) !important;
+  color: #0D0D0C !important;
+}
+
+:global([data-theme="vela"]) .success {
+  background: rgba(16, 185, 129, 0.10) !important;
+  border: 1px solid rgba(16, 185, 129, 0.35) !important;
+  color: #065F46 !important;
+}
+
+:global([data-theme="vela"]) .error {
+  background: rgba(220, 38, 38, 0.10) !important;
+  border: 1px solid rgba(220, 38, 38, 0.30) !important;
+  color: #991B1B !important;
 }
 
 @keyframes spin {

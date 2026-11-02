@@ -3,7 +3,7 @@
  * icon-only rail sidebar, and routed viewports.
  */
 
-import { HashRouter, Routes, Route } from 'react-router-dom';
+import { HashRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { AppProvider } from './store/useAppStore';
 import { useStorageHydrate, useStoragePersist } from './hooks/useStorage';
 import Titlebar from './components/Titlebar';
@@ -13,7 +13,7 @@ import Sites from './pages/Sites';
 import Apps from './pages/Apps';
 import Whitelist from './pages/Whitelist';
 import DnsSettings from './pages/DnsSettings';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import ActivityLog from './pages/ActivityLog';
 import Settings from './pages/Settings';
 import {
@@ -101,16 +101,34 @@ function TraySync() {
 function CustomizationSync() {
   const { state } = useAppStore();
   const { customization, isHydrated } = state;
-  const { setWindowEffect } = useTauri();
+  const { setWindowEffect, setAppIcon } = useTauri();
 
   useEffect(() => {
     // Strictly wait until storage is hydrated so we do not prematurely reset effects to 'none'
     if (!isHydrated) return;
 
-    const { bgMode = 'default', opacity = 75, blur = 16 } = customization || {};
+    const { theme = 'dark-monolith', appIcon = 'monolith', bgMode = 'default', opacity = 75, blur = 16 } = customization || {};
     const root = document.documentElement;
 
+    root.setAttribute('data-app-icon', appIcon);
+    setAppIcon(appIcon).catch(() => {});
+
     const applyCurrentEffect = () => {
+      if (theme === 'vela') {
+        root.setAttribute('data-theme', 'vela');
+        root.style.removeProperty('--bg-app');
+        root.style.removeProperty('--bg-surface');
+        root.style.removeProperty('--bg-surface-2');
+        root.style.removeProperty('--bg-surface-3');
+        root.style.removeProperty('--window-backdrop');
+        root.style.removeProperty('--border');
+        root.setAttribute('data-theme-mode', 'default');
+        setWindowEffect('none').catch(() => {});
+        return;
+      }
+
+      root.removeAttribute('data-theme');
+
       if (bgMode === 'acrylic') {
         const alpha = Math.max(0.15, Math.min(0.98, opacity / 100));
         const blurPx = Math.max(0, Math.min(50, blur));
@@ -182,6 +200,51 @@ function CustomizationSync() {
   return null;
 }
 
+function VelaAmbientBackdrop() {
+  const { state } = useAppStore();
+  const location = useLocation();
+  const [heroColorKey, setHeroColorKey] = useState('yellow');
+  const isVela = state.customization?.theme === 'vela';
+
+  useEffect(() => {
+    const handleHeroColor = (e) => {
+      if (e.detail?.colorKey) {
+        setHeroColorKey(e.detail.colorKey);
+      }
+    };
+    window.addEventListener('vela:hero-color', handleHeroColor);
+    return () => window.removeEventListener('vela:hero-color', handleHeroColor);
+  }, []);
+
+  if (!isVela) return null;
+
+  const path = location.pathname;
+  const isDashboard = path === '/';
+
+  return (
+    <div className={styles.velaBackdropContainer} aria-hidden="true">
+      {/* ── Dashboard Dynamic Ticker Ambient Gradients (Smooth Cross-fade) ── */}
+      <div className={`${styles.velaGradientLayer} ${styles.gradHeroYellow} ${isDashboard && heroColorKey === 'yellow' ? styles.gradActive : ''}`} />
+      <div className={`${styles.velaGradientLayer} ${styles.gradHeroPeach} ${isDashboard && heroColorKey === 'peach' ? styles.gradActive : ''}`} />
+      <div className={`${styles.velaGradientLayer} ${styles.gradHeroGreen} ${isDashboard && heroColorKey === 'green' ? styles.gradActive : ''}`} />
+      <div className={`${styles.velaGradientLayer} ${styles.gradHeroPurple} ${isDashboard && heroColorKey === 'purple' ? styles.gradActive : ''}`} />
+      <div className={`${styles.velaGradientLayer} ${styles.gradHeroConnecting} ${isDashboard && heroColorKey === 'connecting' ? styles.gradActive : ''}`} />
+      <div className={`${styles.velaGradientLayer} ${styles.gradHeroDisconnecting} ${isDashboard && heroColorKey === 'disconnecting' ? styles.gradActive : ''}`} />
+
+      {/* ── Page-specific Ambient Gradients ── */}
+      <div className={`${styles.velaGradientLayer} ${styles.gradSites} ${path === '/sites' ? styles.gradActive : ''}`} />
+      <div className={`${styles.velaGradientLayer} ${styles.gradApps} ${path === '/apps' ? styles.gradActive : ''}`} />
+      <div className={`${styles.velaGradientLayer} ${styles.gradWhitelist} ${path === '/whitelist' ? styles.gradActive : ''}`} />
+      <div className={`${styles.velaGradientLayer} ${styles.gradDns} ${path === '/dns' ? styles.gradActive : ''}`} />
+      <div className={`${styles.velaGradientLayer} ${styles.gradLogs} ${path === '/log' ? styles.gradActive : ''}`} />
+      <div className={`${styles.velaGradientLayer} ${styles.gradSettings} ${path === '/settings' ? styles.gradActive : ''}`} />
+
+      {/* ── Tactile Paper Grain Overlay ── */}
+      <div className={styles.velaPaperGrain} />
+    </div>
+  );
+}
+
 function MainLayout() {
   useStorageHydrate();
   useStoragePersist();
@@ -192,6 +255,7 @@ function MainLayout() {
       <TraySync />
       <CustomizationSync />
       <div className={styles.windowShell}>
+        <VelaAmbientBackdrop />
         {/* Custom Window Titlebar & Native Window Controls */}
         <Titlebar />
 

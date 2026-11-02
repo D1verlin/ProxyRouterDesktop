@@ -1,5 +1,5 @@
 /**
- * Settings page – server API URL, auth token, PAC server port,
+ * Settings page — server API URL, auth token, PAC server port,
  * Language selector (EN / RU), Windows Autostart toggle (Silent in Tray),
  * and Profile Transfer (Export / Import via Drag & Drop or key).
  */
@@ -38,9 +38,12 @@ import {
   getEffectiveProxyPort,
 } from '../store/useAppStore';
 import { useTauri } from '../hooks/useTauri';
+import { clayIcons } from '../assets/clayIcons';
+import ClayIcon from '../components/ClayIcon';
+import { APP_ICONS } from '../assets/appIconsRegistry';
 import styles from './Settings.module.css';
 
-const CURRENT_VERSION = '1.0.21';
+const CURRENT_VERSION = '1.0.22';
 const GITHUB_REPO = 'D1verlin/ProxyRouterDesktop';
 const GITHUB_REPO_URL = 'https://github.com/D1verlin/ProxyRouterDesktop';
 const GITHUB_RELEASES_URL = 'https://github.com/D1verlin/ProxyRouterDesktop/releases';
@@ -69,7 +72,8 @@ const openExternalLink = async (url) => {
 export default function Settings() {
   const { state, dispatch, t } = useAppStore();
   const { serverConfig, language, autostart, terminalProxyActive, isActive, customization } = state;
-  const { getAutostartStatus, setAutostart, setTerminalEnvProxy, apiWhitelistRequest, testUpstreamProxy } = useTauri();
+  const isVela = customization?.theme === 'vela';
+  const { getAutostartStatus, setAutostart, setTerminalEnvProxy, apiWhitelistRequest, testUpstreamProxy, setAppIcon } = useTauri();
 
   const [form, setForm] = useState({ ...serverConfig });
   const [showToken, setShowToken] = useState(false);
@@ -333,7 +337,7 @@ export default function Settings() {
     setTimeout(() => setSaved(false), 2000);
   };
 
-  // ── Profile Export ───────────────────────────────────────────────────────────
+  // в”Ђв”Ђ Profile Export в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
   const getProfileData = () => {
     let host = '127.0.0.1';
     let port = 3128;
@@ -378,7 +382,7 @@ export default function Settings() {
     setNotice({ type: 'success', text: 'Profile configuration (.json) downloaded' });
   };
 
-  // ── Profile Import Logic ─────────────────────────────────────────────────────
+  // в”Ђв”Ђ Profile Import Logic в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
   const applyProfileData = (rawText) => {
     try {
       let jsonStr = rawText.trim();
@@ -471,8 +475,15 @@ export default function Settings() {
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <h1 className={styles.title}>{t('settings.title', 'Settings & Preferences')}</h1>
-        <p className={styles.subtitle}>{t('settings.subtitle', 'Configure proxy credentials, system startup, language, and profile sharing.')}</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          {isVela && (
+            <ClayIcon icon={clayIcons.settings} tint="#D97706" size={42} />
+          )}
+          <div>
+            <h1 className={styles.title}>{t('settings.title', 'Settings & Preferences')}</h1>
+            <p className={styles.subtitle}>{t('settings.subtitle', 'Configure proxy credentials, system startup, language, and profile sharing.')}</p>
+          </div>
+        </div>
       </header>
 
       {notice && (
@@ -498,7 +509,7 @@ export default function Settings() {
       )}
 
       <div className={styles.form}>
-        {/* ── Section 1: General Preferences & Windows Integration ─────────── */}
+        {/* в”Ђв”Ђ Section 1: General Preferences & Windows Integration в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ */}
         <div className={styles.sectionHeader}>
           <Sliders size={16} />
           <h2 className={styles.sectionTitle}>{t('settings.sectionGeneral', 'General & System Integration')}</h2>
@@ -570,124 +581,200 @@ export default function Settings() {
 
         <hr className={styles.separator} />
 
-        {/* ── Section: Customization & Acrylic Background ─────────────────── */}
+        {/* в”Ђв”Ђ Section: Customization & Appearance в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ */}
         <div className={styles.sectionHeader}>
           <Palette size={16} />
           <h2 className={styles.sectionTitle}>{t('settings.sectionCustomization', 'Interface Customization & Appearance')}</h2>
         </div>
 
-        {/* Background Mode Selector */}
+        {/* Theme Selection: Dark Monolith vs Vela Cream */}
         <div className={styles.field}>
-          <label className={styles.label}>{t('settings.bgModeLabel', 'Window Background Mode')}</label>
+          <label className={styles.label}>{t('settings.themeLabel', 'Interface Theme')}</label>
           <div className={styles.modeSelectorGrid}>
             <button
               type="button"
-              className={`${styles.modeCard} ${(customization?.bgMode || 'default') === 'default' ? styles.modeCardActive : ''}`}
-              onClick={() => dispatch({ type: 'SET_CUSTOMIZATION', payload: { bgMode: 'default' } })}
+              className={`${styles.modeCard} ${(customization?.theme || 'dark-monolith') === 'dark-monolith' ? styles.modeCardActive : ''}`}
+              onClick={() => dispatch({ type: 'SET_CUSTOMIZATION', payload: { theme: 'dark-monolith' } })}
             >
-              <div className={styles.modeCardHeader}>
+              <div className={styles.modeCardMain}>
                 <div className={styles.modeCardIcon}>
-                  <Layers size={18} />
+                  <Palette size={17} />
                 </div>
-                <div className={styles.modeCardRadio}>
-                  <span className={styles.radioDot} />
-                </div>
+                <span className={styles.modeCardTitle}>{t('settings.themeDark', 'Dark Monolith')}</span>
               </div>
-              <div className={styles.modeCardContent}>
-                <span className={styles.modeCardTitle}>{t('settings.bgModeDefault', 'Solid Monolith')}</span>
-                <span className={styles.modeCardDesc}>{t('settings.bgModeDefaultDesc', 'Opaque deep dark background (#121212)')}</span>
+              <div className={styles.modeCardRadio}>
+                <span className={styles.radioDot} />
               </div>
             </button>
 
             <button
               type="button"
-              className={`${styles.modeCard} ${customization?.bgMode === 'acrylic' ? styles.modeCardActive : ''}`}
-              onClick={() => dispatch({ type: 'SET_CUSTOMIZATION', payload: { bgMode: 'acrylic' } })}
+              className={`${styles.modeCard} ${customization?.theme === 'vela' ? styles.modeCardActive : ''}`}
+              onClick={() => dispatch({ type: 'SET_CUSTOMIZATION', payload: { theme: 'vela' } })}
             >
-              <div className={styles.modeCardHeader}>
+              <div className={styles.modeCardMain}>
                 <div className={styles.modeCardIcon}>
-                  <Sparkles size={18} />
+                  <Sparkles size={17} />
                 </div>
-                <div className={styles.modeCardRadio}>
-                  <span className={styles.radioDot} />
-                </div>
+                <span className={styles.modeCardTitle}>{t('settings.themeVela', 'Vela Warm Cream')}</span>
               </div>
-              <div className={styles.modeCardContent}>
-                <span className={styles.modeCardTitle}>{t('settings.bgModeAcrylic', 'Translucent Acrylic')}</span>
-                <span className={styles.modeCardDesc}>{t('settings.bgModeAcrylicDesc', 'Frosted glass with dynamic blur and transparency')}</span>
-              </div>
-            </button>
-
-            <button
-              type="button"
-              className={`${styles.modeCard} ${customization?.bgMode === 'mica' ? styles.modeCardActive : ''}`}
-              onClick={() => dispatch({ type: 'SET_CUSTOMIZATION', payload: { bgMode: 'mica' } })}
-            >
-              <div className={styles.modeCardHeader}>
-                <div className={styles.modeCardIcon}>
-                  <Gem size={18} />
-                </div>
-                <div className={styles.modeCardRadio}>
-                  <span className={styles.radioDot} />
-                </div>
-              </div>
-              <div className={styles.modeCardContent}>
-                <span className={styles.modeCardTitle}>{t('settings.bgModeMica', 'Native Mica')}</span>
-                <span className={styles.modeCardDesc}>{t('settings.bgModeMicaDesc', 'Modern Windows 11 dynamic desktop tint material')}</span>
+              <div className={styles.modeCardRadio}>
+                <span className={styles.radioDot} />
               </div>
             </button>
           </div>
-          <p className={styles.hint}>{t('settings.bgModeDesc', 'Select between the solid dark monolith theme and transparent acrylic glass with real-time blur.')}</p>
+          <p className={styles.hint}>{t('settings.themeDesc', 'Choose between Dark Monolith and the warm cream Vela design system.')}</p>
         </div>
 
-        {/* Detailed Controls: Animated Sliders & Live Preview (Expands when acrylic mode is active) */}
-        {customization?.bgMode === 'acrylic' && (
-          <div className={styles.acrylicBox}>
-            <AnimatedSlider
-              label={t('settings.opacityLabel', 'Window Opacity')}
-              description={t('settings.opacityDesc', 'Adjust background opacity (lower values make the window more transparent).')}
-              value={customization?.opacity ?? 75}
-              min={20}
-              max={98}
-              step={1}
-              unit="%"
-              presets={[
-                { value: 40, label: t('settings.customizationPresetHigh', 'High (40%)') },
-                { value: 60, label: '60%' },
-                { value: 75, label: t('settings.customizationPresetMed', 'Balanced (75%)') },
-                { value: 90, label: t('settings.customizationPresetDense', 'Dense (90%)') },
-                { value: 98, label: t('settings.customizationPresetMax', 'Opaque (98%)') },
-              ]}
-              onChange={(nextOpacity) =>
-                dispatch({ type: 'SET_CUSTOMIZATION', payload: { opacity: nextOpacity } })
-              }
-            />
+        {/* Background Mode & Sliders (Hidden for Vela Theme) */}
+        {customization?.theme !== 'vela' && (
+          <>
+            <div className={styles.field}>
+              <label className={styles.label}>{t('settings.bgModeLabel', 'Window Background Mode')}</label>
+              <div className={styles.modeSelectorGrid}>
+                <button
+                  type="button"
+                  className={`${styles.modeCard} ${(customization?.bgMode || 'default') === 'default' ? styles.modeCardActive : ''}`}
+                  onClick={() => dispatch({ type: 'SET_CUSTOMIZATION', payload: { bgMode: 'default' } })}
+                >
+                  <div className={styles.modeCardMain}>
+                    <div className={styles.modeCardIcon}>
+                      <Layers size={17} />
+                    </div>
+                    <span className={styles.modeCardTitle}>{t('settings.bgModeDefault', 'Solid Monolith')}</span>
+                  </div>
+                  <div className={styles.modeCardRadio}>
+                    <span className={styles.radioDot} />
+                  </div>
+                </button>
 
-            <AnimatedSlider
-              label={t('settings.blurLabel', 'Backdrop Blur Intensity')}
-              description={t('settings.blurDesc', 'Configure background blur radius for the acrylic frosted effect.')}
-              value={customization?.blur ?? 16}
-              min={0}
-              max={40}
-              step={1}
-              unit="px"
-              presets={[
-                { value: 0, label: t('settings.customizationBlurOff', 'Crisp (0px)') },
-                { value: 10, label: t('settings.customizationBlurSoft', 'Soft (10px)') },
-                { value: 16, label: t('settings.customizationBlurAcrylic', 'Acrylic (16px)') },
-                { value: 24, label: '24px' },
-                { value: 36, label: t('settings.customizationBlurDeep', 'Deep (36px)') },
-              ]}
-              onChange={(nextBlur) =>
-                dispatch({ type: 'SET_CUSTOMIZATION', payload: { blur: nextBlur } })
-              }
-            />
-          </div>
+                <button
+                  type="button"
+                  className={`${styles.modeCard} ${customization?.bgMode === 'acrylic' ? styles.modeCardActive : ''}`}
+                  onClick={() => dispatch({ type: 'SET_CUSTOMIZATION', payload: { bgMode: 'acrylic' } })}
+                >
+                  <div className={styles.modeCardMain}>
+                    <div className={styles.modeCardIcon}>
+                      <Sparkles size={17} />
+                    </div>
+                    <span className={styles.modeCardTitle}>{t('settings.bgModeAcrylic', 'Translucent Acrylic')}</span>
+                  </div>
+                  <div className={styles.modeCardRadio}>
+                    <span className={styles.radioDot} />
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  className={`${styles.modeCard} ${customization?.bgMode === 'mica' ? styles.modeCardActive : ''}`}
+                  onClick={() => dispatch({ type: 'SET_CUSTOMIZATION', payload: { bgMode: 'mica' } })}
+                >
+                  <div className={styles.modeCardMain}>
+                    <div className={styles.modeCardIcon}>
+                      <Gem size={17} />
+                    </div>
+                    <span className={styles.modeCardTitle}>{t('settings.bgModeMica', 'Native Mica')}</span>
+                  </div>
+                  <div className={styles.modeCardRadio}>
+                    <span className={styles.radioDot} />
+                  </div>
+                </button>
+              </div>
+              <p className={styles.hint}>{t('settings.bgModeDesc', 'Select between the solid dark monolith theme and transparent acrylic glass with real-time blur.')}</p>
+            </div>
+
+            {/* Detailed Controls: Animated Sliders & Live Preview (Expands when acrylic mode is active) */}
+            {customization?.bgMode === 'acrylic' && (
+              <div className={styles.acrylicBox}>
+                <AnimatedSlider
+                  label={t('settings.opacityLabel', 'Window Opacity')}
+                  description={t('settings.opacityDesc', 'Adjust background opacity (lower values make the window more transparent).')}
+                  value={customization?.opacity ?? 75}
+                  min={20}
+                  max={98}
+                  step={1}
+                  unit="%"
+                  presets={[
+                    { value: 40, label: t('settings.customizationPresetHigh', 'High (40%)') },
+                    { value: 60, label: '60%' },
+                    { value: 75, label: t('settings.customizationPresetMed', 'Balanced (75%)') },
+                    { value: 90, label: t('settings.customizationPresetDense', 'Dense (90%)') },
+                    { value: 98, label: t('settings.customizationPresetMax', 'Opaque (98%)') },
+                  ]}
+                  onChange={(nextOpacity) =>
+                    dispatch({ type: 'SET_CUSTOMIZATION', payload: { opacity: nextOpacity } })
+                  }
+                />
+
+                <AnimatedSlider
+                  label={t('settings.blurLabel', 'Backdrop Blur Intensity')}
+                  description={t('settings.blurDesc', 'Configure background blur radius for the acrylic frosted effect.')}
+                  value={customization?.blur ?? 16}
+                  min={0}
+                  max={40}
+                  step={1}
+                  unit="px"
+                  presets={[
+                    { value: 0, label: t('settings.customizationBlurOff', 'Crisp (0px)') },
+                    { value: 10, label: t('settings.customizationBlurSoft', 'Soft (10px)') },
+                    { value: 16, label: t('settings.customizationBlurAcrylic', 'Acrylic (16px)') },
+                    { value: 24, label: '24px' },
+                    { value: 36, label: t('settings.customizationBlurDeep', 'Deep (36px)') },
+                  ]}
+                  onChange={(nextBlur) =>
+                    dispatch({ type: 'SET_CUSTOMIZATION', payload: { blur: nextBlur } })
+                  }
+                />
+              </div>
+            )}
+          </>
         )}
+
+        {/* Telegram-style Application Icon Picker */}
+        <div className={styles.field}>
+          <label className={styles.label}>{t('settings.sectionIcon', 'Application Icon')}</label>
+          <div className={styles.iconGallery}>
+            {APP_ICONS.map((icon) => {
+              const isSelected = (customization?.appIcon || 'monolith') === icon.id;
+              return (
+                <button
+                  key={icon.id}
+                  type="button"
+                  className={`${styles.iconCard} ${isSelected ? styles.iconCardActive : ''}`}
+                  onClick={() => {
+                    dispatch({ type: 'SET_CUSTOMIZATION', payload: { appIcon: icon.id } });
+                    setAppIcon(icon.id).catch(() => {});
+                  }}
+                  title={t(icon.descKey, icon.defaultDesc)}
+                >
+                  <div className={styles.iconBadgeWrapper}>
+                    <img
+                      src={icon.preview}
+                      alt={t(icon.nameKey, icon.defaultName)}
+                      className={styles.iconBadgeImg}
+                      draggable={false}
+                    />
+                    {isSelected && (
+                      <span className={styles.iconCheckmark}>
+                        <Check size={12} strokeWidth={3} />
+                      </span>
+                    )}
+                  </div>
+                  <span className={styles.iconName}>
+                    {t(icon.nameKey, icon.defaultName)}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <p className={styles.hint}>
+            {t('settings.iconDesc', 'Choose your preferred icon style for the window, taskbar, and system tray.')}
+          </p>
+        </div>
 
         <hr className={styles.separator} />
 
-        {/* ── Section 2: Server & Authentication ────────────────────────────── */}
+        {/* в”Ђв”Ђ Section 2: Server & Authentication в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ */}
         <div className={styles.sectionHeader}>
           <Radio size={16} />
           <h2 className={styles.sectionTitle}>{t('settings.sectionServer', 'Server & Authentication')}</h2>
@@ -877,7 +964,7 @@ export default function Settings() {
 
         <hr className={styles.separator} />
 
-        {/* ── Section 3: Profile Export & Import Section ────────────────────── */}
+        {/* в”Ђв”Ђ Section 3: Profile Export & Import Section в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ */}
         <div className={styles.profileSection}>
           <div className={styles.sectionHeader}>
             <Share2 size={16} />
@@ -983,7 +1070,7 @@ export default function Settings() {
 
         <hr className={styles.separator} />
 
-        {/* ── Section 4: About & Updates Section ────────────────────────────── */}
+        {/* в”Ђв”Ђ Section 4: About & Updates Section в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ */}
         <div className={styles.aboutSection}>
           <div className={styles.sectionHeader}>
             <Info size={16} />

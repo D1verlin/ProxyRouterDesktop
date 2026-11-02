@@ -25,6 +25,8 @@
   flex: 1;
   overflow: hidden;
   min-height: 0;
+  position: relative;
+  z-index: 2;
 }
 
 .content {
@@ -33,4 +35,127 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+  position: relative;
+}
+
+/* в”Ђв”Ђ Vela Theme Crossfading Pastel Gradients & Paper Grain в”Ђв”Ђ */
+.velaBackdropContainer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.velaGradientLayer {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.85s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity;
+}
+
+.velaGradientLayer.gradActive {
+  opacity: 1;
+}
+
+/* 1. Dashboard: Dynamic Ticker Ambient Gradients */
+.gradHeroYellow {
+  background: 
+    radial-gradient(circle at 85% 15%, rgba(233, 194, 46, 0.32) 0%, rgba(233, 194, 46, 0) 60%),
+    radial-gradient(circle at 12% 85%, rgba(244, 235, 198, 0.50) 0%, rgba(244, 235, 198, 0) 55%),
+    #FBF6EF;
+}
+
+.gradHeroPeach {
+  background: 
+    radial-gradient(circle at 85% 15%, rgba(242, 119, 47, 0.30) 0%, rgba(242, 119, 47, 0) 60%),
+    radial-gradient(circle at 15% 85%, rgba(249, 203, 169, 0.50) 0%, rgba(249, 203, 169, 0) 55%),
+    #FBF6EF;
+}
+
+.gradHeroGreen {
+  background: 
+    radial-gradient(circle at 85% 15%, rgba(63, 184, 116, 0.28) 0%, rgba(63, 184, 116, 0) 60%),
+    radial-gradient(circle at 15% 85%, rgba(223, 233, 212, 0.50) 0%, rgba(223, 233, 212, 0) 55%),
+    #FBF6EF;
+}
+
+.gradHeroPurple {
+  background: 
+    radial-gradient(circle at 85% 15%, rgba(197, 100, 196, 0.28) 0%, rgba(197, 100, 196, 0) 60%),
+    radial-gradient(circle at 15% 85%, rgba(236, 214, 226, 0.50) 0%, rgba(236, 214, 226, 0) 55%),
+    #FBF6EF;
+}
+
+.gradHeroConnecting {
+  background: 
+    radial-gradient(circle at 85% 15%, rgba(234, 179, 8, 0.35) 0%, rgba(234, 179, 8, 0) 60%),
+    radial-gradient(circle at 12% 85%, rgba(254, 240, 138, 0.45) 0%, rgba(254, 240, 138, 0) 55%),
+    #FBF6EF;
+}
+
+.gradHeroDisconnecting {
+  background: 
+    radial-gradient(circle at 85% 15%, rgba(153, 149, 143, 0.22) 0%, rgba(153, 149, 143, 0) 60%),
+    radial-gradient(circle at 15% 85%, rgba(231, 229, 228, 0.45) 0%, rgba(231, 229, 228, 0) 55%),
+    #FBF6EF;
+}
+
+/* 2. Sites: Warm Peach */
+.gradSites {
+  background: 
+    radial-gradient(circle at 85% 15%, rgba(242, 119, 47, 0.28) 0%, rgba(242, 119, 47, 0) 60%),
+    radial-gradient(circle at 15% 85%, rgba(249, 203, 169, 0.45) 0%, rgba(249, 203, 169, 0) 55%),
+    #FBF6EF;
+}
+
+/* 3. Apps: Fresh Sage */
+.gradApps {
+  background: 
+    radial-gradient(circle at 85% 15%, rgba(63, 184, 116, 0.26) 0%, rgba(63, 184, 116, 0) 60%),
+    radial-gradient(circle at 15% 85%, rgba(223, 233, 212, 0.50) 0%, rgba(223, 233, 212, 0) 55%),
+    #FBF6EF;
+}
+
+/* 4. Whitelist: Emerald */
+.gradWhitelist {
+  background: 
+    radial-gradient(circle at 85% 15%, rgba(16, 185, 129, 0.25) 0%, rgba(16, 185, 129, 0) 60%),
+    radial-gradient(circle at 15% 85%, rgba(167, 243, 208, 0.45) 0%, rgba(167, 243, 208, 0) 55%),
+    #FBF6EF;
+}
+
+/* 5. DNS: Lilac / Lavender */
+.gradDns {
+  background: 
+    radial-gradient(circle at 85% 15%, rgba(197, 100, 196, 0.26) 0%, rgba(197, 100, 196, 0) 60%),
+    radial-gradient(circle at 15% 85%, rgba(236, 214, 226, 0.50) 0%, rgba(236, 214, 226, 0) 55%),
+    #FBF6EF;
+}
+
+/* 6. Activity Log: Radiant Rose / Coral */
+.gradLogs {
+  background: 
+    radial-gradient(circle at 85% 15%, rgba(244, 63, 94, 0.28) 0%, rgba(244, 63, 94, 0) 60%),
+    radial-gradient(circle at 15% 85%, rgba(254, 205, 211, 0.45) 0%, rgba(254, 205, 211, 0) 55%),
+    #FBF6EF;
+}
+
+/* 7. Settings: Warm Sand / Amber */
+.gradSettings {
+  background: 
+    radial-gradient(circle at 85% 15%, rgba(217, 119, 6, 0.24) 0%, rgba(217, 119, 6, 0) 60%),
+    radial-gradient(circle at 15% 85%, rgba(254, 243, 199, 0.45) 0%, rgba(254, 243, 199, 0) 55%),
+    #FBF6EF;
+}
+
+/* Authentic Paper Grain Noise */
+.velaPaperGrain {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.038;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  z-index: 1;
 }

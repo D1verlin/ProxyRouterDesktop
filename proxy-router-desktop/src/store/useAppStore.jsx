@@ -289,6 +289,8 @@ const initialState = {
 
   /** Customization & UI Theme (Acrylic background, Mica & opacity) */
   customization: {
+    theme: 'dark-monolith', // 'dark-monolith' | 'vela'
+    appIcon: 'monolith',    // 'monolith' | 'vela-cream' | 'vela-amber' | 'sunset-peach' | 'lilac-lavender' | 'cyber-emerald' | 'midnight-white'
     bgMode: 'default', // 'default' | 'acrylic' | 'mica'
     opacity: 75,       // 20 .. 95 %
     blur: 16,          // 0 .. 40 px

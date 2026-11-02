@@ -6,12 +6,15 @@
 import { useState, useMemo } from 'react';
 import { Trash2, Copy, Check, Search } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
+import { clayIcons } from '../assets/clayIcons';
+import ClayIcon from '../components/ClayIcon';
 import styles from './ActivityLog.module.css';
 
 const CATEGORIES = ['ALL', 'NET', 'AUTH', 'SYS', 'PAC', 'PROC', 'CLI'];
 
 export default function ActivityLog() {
   const { state, dispatch, t } = useAppStore();
+  const isVela = state.customization?.theme === 'vela';
   const { log } = state;
 
   const [activeCategory, setActiveCategory] = useState('ALL');
@@ -47,14 +50,19 @@ export default function ActivityLog() {
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <div>
-          <h1 className={styles.title}>{t('log.title', 'Activity & Event Log')}</h1>
-          <p className={styles.subtitle}>
-            {t(
-              'log.subtitle',
-              'Real-time audit log of proxy tunnels, routing events, and authentication.'
-            )}
-          </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          {isVela && (
+            <ClayIcon icon={clayIcons.logs} tint="#F43F5E" size={42} />
+          )}
+          <div>
+            <h1 className={styles.title}>{t('log.title', 'Activity & Event Log')}</h1>
+            <p className={styles.subtitle}>
+              {t(
+                'log.subtitle',
+                'Real-time audit log of proxy tunnels, routing events, and authentication.'
+              )}
+            </p>
+          </div>
         </div>
 
         <div className={styles.topActions}>

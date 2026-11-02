@@ -26,10 +26,13 @@ import {
 } from 'lucide-react';
 import { useAppStore, getEffectiveProxyHost } from '../store/useAppStore';
 import { useTauri } from '../hooks/useTauri';
+import { clayIcons } from '../assets/clayIcons';
+import ClayIcon from '../components/ClayIcon';
 import styles from './Apps.module.css';
 
 export default function Apps() {
   const { state, dispatch, t } = useAppStore();
+  const isVela = state.customization?.theme === 'vela';
   const { routedApps, terminalProxyActive, autoRouteDetected, proxyHost, proxyPort } = state;
   const {
     pickExeFile,
@@ -56,7 +59,7 @@ export default function Apps() {
     updateUpstreamProxy(host, port).catch(() => {});
   }, [proxyHost, proxyPort, state.serverConfig, updateUpstreamProxy]);
 
-  // ── Browse .exe using native Windows Explorer ──────────────────────────────
+  // в”Ђв”Ђ Browse .exe using native Windows Explorer в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
   const handleBrowseExe = async () => {
     try {
       const selectedPath = await pickExeFile();
@@ -93,7 +96,7 @@ export default function Apps() {
     });
   };
 
-  // ── Launch process through proxy ───────────────────────────────────────────
+  // в”Ђв”Ђ Launch process through proxy в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
   const handleLaunchRouted = async (app, isolatedProfile = true) => {
     setActionNotice(null);
     try {
@@ -233,13 +236,20 @@ export default function Apps() {
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <h1 className={styles.title}>{t('apps.title', 'Application Traffic Routing')}</h1>
-        <p className={styles.subtitle}>
-          {t(
-            'apps.subtitle',
-            'Selective interception and isolation of application network traffic via local tunnel :8183'
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          {isVela && (
+            <ClayIcon icon={clayIcons.apps} tint="#3FB874" size={42} />
           )}
-        </p>
+          <div>
+            <h1 className={styles.title}>{t('apps.title', 'Application Traffic Routing')}</h1>
+            <p className={styles.subtitle}>
+              {t(
+                'apps.subtitle',
+                'Selective interception and isolation of application network traffic via local tunnel :8183'
+              )}
+            </p>
+          </div>
+        </div>
       </header>
 
       {/* Local Engine Status Banner */}

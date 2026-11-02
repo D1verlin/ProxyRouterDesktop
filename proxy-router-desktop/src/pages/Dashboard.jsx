@@ -18,11 +18,13 @@ import {
 import { useTauri } from '../hooks/useTauri';
 import { usePacServer } from '../hooks/usePacServer';
 import PlanetVisualizer from '../components/PlanetVisualizer';
+import VelaHeroDashboard from '../components/VelaHeroDashboard';
 import styles from './Dashboard.module.css';
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const { state, dispatch, t } = useAppStore();
+  const isVela = state.customization?.theme === 'vela';
   const {
     isActive,
     publicIp,
@@ -57,7 +59,7 @@ export default function Dashboard() {
     ...customDomains,
   ];
 
-  // ── Fetch real public IPv4 ───────────────────────────────────────────────────
+  // в”Ђв”Ђ Fetch real public IPv4 в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
   const fetchIp = useCallback(async () => {
     try {
       const ip = await getNativeIp();
@@ -77,7 +79,7 @@ export default function Dashboard() {
     }
   }, [dispatch, getNativeIp]);
 
-  // ── Whitelist current IP via server API (returns true if successful) ────────
+  // в”Ђв”Ђ Whitelist current IP via server API (returns true if successful) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
   const whitelistIp = useCallback(async (ip) => {
     const normalizedUrl = getEffectiveApiUrl(serverConfig);
     const token = getEffectiveAuthToken(serverConfig);
@@ -123,7 +125,7 @@ export default function Dashboard() {
     }
   }, [serverConfig, dispatch, apiWhitelistRequest, t]);
 
-  // ── Toggle proxy on/off with Strict Authorization Check & Handshake Lock ────
+  // в”Ђв”Ђ Toggle proxy on/off with Strict Authorization Check & Handshake Lock в”Ђв”Ђв”Ђв”Ђ
   const handleToggle = useCallback(async () => {
     // Strictly block concurrent activations / flapping clicks
     if (isConnectingRef.current) return;
@@ -278,24 +280,40 @@ export default function Dashboard() {
             className={styles.noticeClose}
             onClick={() => setErrorNotice(null)}
           >
-            ×
+            Г—
           </button>
         </div>
       )}
 
-      <PlanetVisualizer
-        isActive={isActive}
-        isConnecting={isConnecting}
-        isDisconnecting={isDisconnecting}
-        isUnconfiguredWarning={isUnconfiguredWarning}
-        isConfigured={isConfigured}
-        activeServices={activeServices}
-        onToggle={handleToggle}
-        disabled={isConnecting || isDisconnecting}
-        publicIp={publicIp}
-        onRefreshIp={fetchIp}
-        onOpenSettings={() => navigate('/settings')}
-      />
+      {isVela ? (
+        <VelaHeroDashboard
+          isActive={isActive}
+          isConnecting={isConnecting}
+          isDisconnecting={isDisconnecting}
+          isUnconfiguredWarning={isUnconfiguredWarning}
+          isConfigured={isConfigured}
+          activeServices={activeServices}
+          onToggle={handleToggle}
+          disabled={isConnecting || isDisconnecting}
+          publicIp={publicIp}
+          onRefreshIp={fetchIp}
+          onOpenSettings={() => navigate('/settings')}
+        />
+      ) : (
+        <PlanetVisualizer
+          isActive={isActive}
+          isConnecting={isConnecting}
+          isDisconnecting={isDisconnecting}
+          isUnconfiguredWarning={isUnconfiguredWarning}
+          isConfigured={isConfigured}
+          activeServices={activeServices}
+          onToggle={handleToggle}
+          disabled={isConnecting || isDisconnecting}
+          publicIp={publicIp}
+          onRefreshIp={fetchIp}
+          onOpenSettings={() => navigate('/settings')}
+        />
+      )}
     </div>
   );
 }

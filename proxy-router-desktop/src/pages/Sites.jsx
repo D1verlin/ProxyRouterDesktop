@@ -6,12 +6,15 @@
 import { useState, useMemo } from 'react';
 import { Plus, X, Search, Sparkles } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
+import { clayIcons } from '../assets/clayIcons';
+import ClayIcon from '../components/ClayIcon';
 import styles from './Sites.module.css';
 
 const CATEGORIES = ['All', 'Google AI', 'OpenAI', 'Anthropic', 'Inference'];
 
 export default function Sites() {
   const { state, dispatch, t } = useAppStore();
+  const isVela = state.customization?.theme === 'vela';
   const { presetSites, customDomains } = state;
 
   const [inputValue, setInputValue] = useState('');
@@ -53,16 +56,21 @@ export default function Sites() {
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <div>
-          <h1 className={styles.title}>
-            {t('sites.title', 'AI Services & Routing')}
-          </h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          {isVela && (
+            <ClayIcon icon={clayIcons.sites} tint="#F2772F" size={42} />
+          )}
+          <div>
+            <h1 className={styles.title}>
+              {t('sites.title', 'AI Services & Routing')}
+            </h1>
           <p className={styles.subtitle}>
             {t(
               'sites.subtitle',
               'Select neural networks, AI APIs, and endpoints to route through proxy.'
             )}
           </p>
+          </div>
         </div>
       </header>
 

@@ -303,6 +303,10 @@ export function useTauri() {
     return invoke('restore_network_defaults');
   }, []);
 
+  const setAppIcon = useCallback(async (iconId) => {
+    return invoke('set_app_icon', { iconId, icon_id: iconId });
+  }, []);
+
   const setWindowEffect = useCallback(async (effect, color = null) => {
     return invoke('set_window_effect', { effect, color });
   }, []);
@@ -325,6 +329,7 @@ export function useTauri() {
     getAutostartStatus,
     setAutostart,
     updateTrayIcon,
+    setAppIcon,
     appQuit,
     minimizeWindow,
     toggleMaximizeWindow,

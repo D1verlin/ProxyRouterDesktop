@@ -1,5 +1,5 @@
 /* ============================================================
-   Dark Monolith UI – Global Tokens & Reset
+   Dark Monolith & Vela UI — Global Tokens & Reset
    ============================================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -16,6 +16,7 @@
   --accent-fg:    #000000;
   --text-primary: #E0E0E0;
   --text-sec:     #888888;
+  --text-hint:    #666666;
 
   /* Borders & Shadows */
   --border:       rgba(255, 255, 255, 0.08);
@@ -32,6 +33,38 @@
   --r-md: 10px;
   --r-lg: 14px;
   --t:    all 0.15s ease;
+}
+
+/* ============================================================
+   Vela Theme — Warm Cream, Ink & 3D Clay Aesthetic
+   ============================================================ */
+:root[data-theme="vela"] {
+  /* Surfaces - Translucent milk-glass allowing ambient pastel gradients to softly breathe through */
+  --bg-app:       #FBF6EF;
+  --bg-surface:   #FBF6EF;
+  --bg-surface-2: rgba(255, 255, 255, 0.52);
+  --bg-surface-3: rgba(255, 255, 255, 0.36);
+
+  /* Accent & Typography */
+  --accent:       #0D0D0C;
+  --accent-fg:    #FBF6EF;
+  --text-primary: #0D0D0C;
+  --text-sec:     rgba(13, 13, 12, 0.65);
+  --text-hint:    rgba(13, 13, 12, 0.45);
+
+  /* Clear High-Contrast Borders & Shadows */
+  --border:       rgba(13, 13, 12, 0.14);
+  --border-hover: rgba(13, 13, 12, 0.35);
+  --shadow:       0 4px 16px rgba(13, 13, 12, 0.05);
+  --shadow-lg:    0 12px 32px rgba(13, 13, 12, 0.08);
+
+  /* Signature Vela Tints */
+  --vela-cream:   #FBF6EF;
+  --vela-ink:     #0D0D0C;
+  --vela-lemon:   #E9C22E;
+  --vela-peach:   #F2772F;
+  --vela-sage:    #3FB874;
+  --vela-lilac:   #C564C4;
 }
 
 *, *::before, *::after {
@@ -62,20 +95,23 @@ body {
   user-select: none;
 }
 
-/* ── Scrollbar ─────────────────────────────────────────────── */
+/* в”Ђв”Ђ Scrollbar в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ */
 ::-webkit-scrollbar        { width: 5px; }
 ::-webkit-scrollbar-track  { background: transparent; }
 ::-webkit-scrollbar-thumb  { background: rgba(255,255,255,0.1); border-radius: 99px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
 
-/* ── Shared Button Styles ──────────────────────────────────── */
+:root[data-theme="vela"] ::-webkit-scrollbar-thumb { background: rgba(13, 13, 12, 0.15); }
+:root[data-theme="vela"] ::-webkit-scrollbar-thumb:hover { background: rgba(13, 13, 12, 0.28); }
+
+/* в”Ђв”Ђ Shared Button Styles в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ */
 .btn-primary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: #FFFFFF;
-  color: #000000;
+  background: var(--accent);
+  color: var(--accent-fg);
   border: none;
   border-radius: var(--r-md);
   font-family: var(--font-sans);
@@ -85,9 +121,10 @@ body {
   height: 38px;
   cursor: pointer;
   transition: var(--t);
+  white-space: nowrap;
 }
-.btn-primary:hover  { background: #e0e0e0; }
-.btn-primary:active { background: #c8c8c8; }
+.btn-primary:hover  { opacity: 0.9; }
+.btn-primary:active { opacity: 0.8; }
 
 .btn-secondary {
   display: inline-flex;
@@ -105,9 +142,13 @@ body {
   height: 38px;
   cursor: pointer;
   transition: var(--t);
+  white-space: nowrap;
 }
-.btn-secondary:hover  { border-color: var(--border-hover); color: #fff; }
-.btn-secondary:active { background: rgba(255,255,255,0.04); }
+.btn-secondary:hover  { border-color: var(--border-hover); color: var(--accent); background: rgba(255,255,255,0.04); }
+:root[data-theme="vela"] .btn-secondary { background: rgba(255, 255, 255, 0.50); backdrop-filter: blur(14px) saturate(130%); -webkit-backdrop-filter: blur(14px) saturate(130%); color: #0D0D0C; border: 1.2px solid rgba(13, 13, 12, 0.12); }
+:root[data-theme="vela"] .btn-secondary:hover { background: #0D0D0C; color: #FBF6EF; border-color: #0D0D0C; }
+.btn-secondary:active { background: rgba(255,255,255,0.08); }
+:root[data-theme="vela"] .btn-secondary:active { opacity: 0.9; }
 
 .btn-icon {
   display: inline-flex;
@@ -121,11 +162,15 @@ body {
   cursor: pointer;
   transition: var(--t);
   color: var(--text-sec);
+  white-space: nowrap;
 }
 .btn-icon:hover  { border-color: var(--border-hover); color: var(--text-primary); }
+:root[data-theme="vela"] .btn-icon { background: rgba(255, 255, 255, 0.50); backdrop-filter: blur(14px) saturate(130%); -webkit-backdrop-filter: blur(14px) saturate(130%); color: #0D0D0C; border: 1.2px solid rgba(13, 13, 12, 0.12); }
+:root[data-theme="vela"] .btn-icon:hover { background: #0D0D0C; color: #FBF6EF; border-color: #0D0D0C; }
 .btn-icon:active { background: rgba(255,255,255,0.04); }
+:root[data-theme="vela"] .btn-icon:active { opacity: 0.85; }
 
-/* ── Input / Control ───────────────────────────────────────── */
+/* в”Ђв”Ђ Input / Control в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ */
 .input {
   width: 100%;
   background: var(--bg-surface-3);
@@ -140,9 +185,12 @@ body {
   transition: var(--t);
 }
 .input::placeholder { color: var(--text-sec); }
-.input:focus { border-color: #ffffff; box-shadow: none; }
+.input:focus { border-color: var(--accent); box-shadow: none; }
+:root[data-theme="vela"] .input { background: rgba(255, 255, 255, 0.72); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); color: #0D0D0C; border: 1.2px solid rgba(13, 13, 12, 0.16); }
+:root[data-theme="vela"] .input::placeholder { color: rgba(13, 13, 12, 0.45); }
+:root[data-theme="vela"] .input:focus { border-color: #0D0D0C; box-shadow: 0 0 0 1px #0D0D0C; }
 
-/* ── Badge / Status pill ───────────────────────────────────── */
+/* в”Ђв”Ђ Badge / Status pill в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ */
 .badge {
   display: inline-flex;
   align-items: center;
@@ -155,8 +203,22 @@ body {
   font-weight: 500;
   color: var(--text-sec);
 }
-.badge.active   { color: #fff; background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); }
+:root[data-theme="vela"] .badge {
+  background: rgba(13, 13, 12, 0.06);
+  border: 1.2px solid rgba(13, 13, 12, 0.14);
+  color: #0D0D0C;
+}
+.badge.active {
+  color: var(--accent-fg);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+:root[data-theme="vela"] .badge.active {
+  background: #0D0D0C;
+  color: #FBF6EF;
+  border-color: #0D0D0C;
+}
 .badge.inactive { color: var(--text-sec); }
 
-/* ── Mono values ───────────────────────────────────────────── */
+/* в”Ђв”Ђ Mono values в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ */
 .mono { font-family: var(--font-mono); }

@@ -275,3 +275,73 @@
   border-radius: var(--r-md);
   background: var(--bg-surface-2);
 }
+
+/* в”Ђв”Ђв”Ђ Vela Theme Light & Contrast Overrides в”Ђв”Ђв”Ђ */
+:global([data-theme="vela"]) .title {
+  color: #0D0D0C !important;
+  font-size: 20px !important;
+  font-weight: 600 !important;
+}
+
+:global([data-theme="vela"]) .subtitle {
+  color: rgba(13, 13, 12, 0.65) !important;
+  font-size: 13px !important;
+}
+
+:global([data-theme="vela"]) .siteRow,
+:global([data-theme="vela"]) .domainRow,
+:global([data-theme="vela"]) .empty {
+  background: rgba(255, 255, 255, 0.52) !important;
+  backdrop-filter: blur(16px) saturate(130%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(130%) !important;
+  border: 1.2px solid rgba(13, 13, 12, 0.09) !important;
+  box-shadow: 0 4px 20px rgba(13, 13, 12, 0.02) !important;
+}
+
+:global([data-theme="vela"]) .siteRow:hover,
+:global([data-theme="vela"]) .domainRow:hover {
+  border-color: rgba(13, 13, 12, 0.25) !important;
+  background: rgba(255, 255, 255, 0.65) !important;
+  box-shadow: 0 4px 14px rgba(13, 13, 12, 0.05) !important;
+}
+
+:global([data-theme="vela"]) .categoryPill {
+  background: rgba(255, 255, 255, 0.50) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  border: 1.2px solid rgba(13, 13, 12, 0.12) !important;
+  color: #0D0D0C !important;
+}
+
+:global([data-theme="vela"]) .categoryActive {
+  background: #0D0D0C !important;
+  color: #FBF6EF !important;
+  border-color: #0D0D0C !important;
+  font-weight: 600;
+}
+
+:global([data-theme="vela"]) .toggle {
+  background: rgba(255, 255, 255, 0.65) !important;
+  border: 1.2px solid rgba(13, 13, 12, 0.18) !important;
+}
+
+:global([data-theme="vela"]) .toggleThumb {
+  background: rgba(13, 13, 12, 0.40) !important;
+}
+
+:global([data-theme="vela"]) .toggleOn {
+  background: #0D0D0C !important;
+  border-color: #0D0D0C !important;
+}
+
+:global([data-theme="vela"]) .toggleOn .toggleThumb {
+  background: #FBF6EF !important;
+}
+
+:global([data-theme="vela"]) .tabActive {
+  color: #0D0D0C !important;
+  border-color: rgba(13, 13, 12, 0.18) !important;
+  border-bottom-color: #FBF6EF !important;
+  background: #FBF6EF !important;
+  font-weight: 600;
+}

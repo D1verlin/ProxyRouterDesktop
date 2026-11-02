@@ -166,6 +166,52 @@
   animation: spin 1s linear infinite;
 }
 
+/* в”Ђв”Ђв”Ђ Vela Theme Light & Contrast Overrides в”Ђв”Ђв”Ђ */
+:global([data-theme="vela"]) .title {
+  color: #0D0D0C !important;
+  font-size: 20px !important;
+  font-weight: 600 !important;
+}
+
+:global([data-theme="vela"]) .subtitle {
+  color: rgba(13, 13, 12, 0.65) !important;
+  font-size: 13px !important;
+}
+
+:global([data-theme="vela"]) .addForm,
+:global([data-theme="vela"]) .ipRow,
+:global([data-theme="vela"]) .empty {
+  background: rgba(255, 255, 255, 0.52) !important;
+  backdrop-filter: blur(16px) saturate(130%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(130%) !important;
+  border: 1.2px solid rgba(13, 13, 12, 0.09) !important;
+  box-shadow: 0 4px 20px rgba(13, 13, 12, 0.02) !important;
+}
+
+:global([data-theme="vela"]) .ipRow:hover {
+  border-color: rgba(13, 13, 12, 0.25) !important;
+  background: rgba(255, 255, 255, 0.65) !important;
+  box-shadow: 0 4px 12px rgba(13, 13, 12, 0.05) !important;
+}
+
+:global([data-theme="vela"]) .success {
+  background: rgba(16, 185, 129, 0.10) !important;
+  border: 1px solid rgba(16, 185, 129, 0.35) !important;
+  color: #065F46 !important;
+}
+
+:global([data-theme="vela"]) .error {
+  background: rgba(220, 38, 38, 0.10) !important;
+  border: 1px solid rgba(220, 38, 38, 0.30) !important;
+  color: #991B1B !important;
+}
+
+:global([data-theme="vela"]) .warn {
+  background: rgba(245, 158, 11, 0.10) !important;
+  border: 1px solid rgba(245, 158, 11, 0.30) !important;
+  color: #92400E !important;
+}
+
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }

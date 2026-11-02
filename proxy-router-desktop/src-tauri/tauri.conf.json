@@ -1,11 +1,11 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Proxy Router Desktop",
-  "version": "1.0.21",
+  "version": "1.0.22",
   "identifier": "com.proxyrouter.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
-    "devUrl": "http://localhost:1420",
+    "devUrl": "http://127.0.0.1:1420",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },
@@ -23,7 +23,7 @@
         "decorations": false,
         "transparent": true,
         "shadow": false,
-        "visible": false
+        "visible": true
       }
     ],
     "security": {

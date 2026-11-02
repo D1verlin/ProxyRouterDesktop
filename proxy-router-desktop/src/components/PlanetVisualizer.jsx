@@ -27,6 +27,7 @@ import { RefreshCw, Copy, Check } from 'lucide-react';
 import { useAppStore, getEffectiveProxyProtocol, getEffectiveProxyPort } from '../store/useAppStore';
 import { drawOfficialBrandLogo } from '../assets/brandLogos.js';
 import { EARTH_DOTS, EARTH_RINGS } from '../assets/earthData.js';
+import { clayIcons } from '../assets/clayIcons';
 import styles from './PlanetVisualizer.module.css';
 
 function toRad(deg) { return (deg * Math.PI) / 180; }
@@ -130,6 +131,7 @@ export default function PlanetVisualizer({
   onOpenSettings,
 }) {
   const { state, t } = useAppStore();
+  const isVela = state.customization?.theme === 'vela';
   const canvasRef = useRef(null);
   const [copied, setCopied] = useState(false);
   const isHoveringRef = useRef(false);
@@ -456,6 +458,11 @@ export default function PlanetVisualizer({
       ctx.clearRect(0, 0, width, height);
       pulsePhase += 0.05;
 
+      const fgColor = isVela ? '13, 13, 12' : '255, 255, 255';
+      const primaryColor = isVela ? '#0D0D0C' : '#ffffff';
+      const badgeBg = isVela ? 'rgba(251, 246, 239, 0.96)' : 'rgba(12, 12, 12, 0.94)';
+      const badgeBorder = isVela ? 'rgba(13, 13, 12, 0.22)' : 'rgba(255, 255, 255, 0.85)';
+
       // ────────────────────────────────────────────────────────────────────────
       // PHASE 1: CONNECTING HANDSHAKE PIPELINE (PC -> PROXY PACKETS)
       // ────────────────────────────────────────────────────────────────────────
@@ -471,7 +478,7 @@ export default function PlanetVisualizer({
         ctx.beginPath();
         ctx.moveTo(pcX, pcY);
         ctx.lineTo(proxyX, proxyY);
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.strokeStyle = `rgba(${fgColor}, 0.2)`;
         ctx.lineWidth = 2;
         ctx.stroke();
 
@@ -485,38 +492,38 @@ export default function PlanetVisualizer({
 
           ctx.beginPath();
           ctx.arc(px, py, 4, 0, Math.PI * 2);
-          ctx.fillStyle = '#ffffff';
+          ctx.fillStyle = primaryColor;
           ctx.fill();
 
           ctx.beginPath();
           ctx.moveTo(px, py);
           ctx.lineTo(Math.max(pcX, px - 30), py);
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+          ctx.strokeStyle = `rgba(${fgColor}, 0.55)`;
           ctx.lineWidth = 2;
           ctx.stroke();
         });
 
         // Left: Мой ПК with bordered badge
-        drawBadge(ctx, pcX, pcY, 26, 'rgba(255, 255, 255, 0.9)');
-        drawMonitorLogo(ctx, pcX, pcY, 26, '#ffffff');
+        drawBadge(ctx, pcX, pcY, 26, badgeBorder, badgeBg);
+        drawMonitorLogo(ctx, pcX, pcY, 26, primaryColor);
         ctx.font = '500 15px "Inter", sans-serif';
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = primaryColor;
         ctx.textAlign = 'center';
         ctx.fillText('Мой ПК', pcX, pcY + 44);
 
         ctx.font = '12px "JetBrains Mono", monospace';
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
+        ctx.fillStyle = `rgba(${fgColor}, 0.65)`;
         ctx.fillText(clientNode.subtext, pcX, pcY + 62);
 
         // Right: Прокси-сервер with bordered badge
-        drawBadge(ctx, proxyX, proxyY, 26, 'rgba(255, 255, 255, 0.85)');
-        drawServerLogo(ctx, proxyX, proxyY, 26, '#ffffff');
+        drawBadge(ctx, proxyX, proxyY, 26, `rgba(${fgColor}, 0.85)`);
+        drawServerLogo(ctx, proxyX, proxyY, 26, primaryColor);
         ctx.font = '500 15px "Inter", sans-serif';
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = primaryColor;
         ctx.fillText('Прокси-сервер', proxyX, proxyY + 44);
 
         ctx.font = '12px "JetBrains Mono", monospace';
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
+        ctx.fillStyle = `rgba(${fgColor}, 0.65)`;
         ctx.fillText(proxyNode.subtext, proxyX, proxyY + 62);
 
         // Center Step Indicator
@@ -528,7 +535,7 @@ export default function PlanetVisualizer({
         }
 
         ctx.font = '13px "JetBrains Mono", monospace';
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+        ctx.fillStyle = `rgba(${fgColor}, 0.95)`;
         ctx.fillText(stepText, centerX, centerY - 36);
         ctx.textAlign = 'left';
         return;
@@ -550,7 +557,7 @@ export default function PlanetVisualizer({
         ctx.setLineDash([8, 8]);
         ctx.moveTo(pcX, pcY);
         ctx.lineTo(proxyX, proxyY);
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+        ctx.strokeStyle = `rgba(${fgColor}, 0.25)`;
         ctx.lineWidth = 1.8;
         ctx.stroke();
         ctx.setLineDash([]);
@@ -565,36 +572,36 @@ export default function PlanetVisualizer({
 
           ctx.beginPath();
           ctx.arc(px, py, 3.5, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+          ctx.fillStyle = `rgba(${fgColor}, 0.85)`;
           ctx.fill();
 
           ctx.beginPath();
           ctx.moveTo(px, py);
           ctx.lineTo(Math.min(proxyX, px + 26), py);
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+          ctx.strokeStyle = `rgba(${fgColor}, 0.35)`;
           ctx.lineWidth = 1.8;
           ctx.stroke();
         });
 
         // Left: Мой ПК with bordered badge
-        drawBadge(ctx, pcX, pcY, 26, 'rgba(255, 255, 255, 0.85)');
-        drawMonitorLogo(ctx, pcX, pcY, 26, '#ffffff');
+        drawBadge(ctx, pcX, pcY, 26, `rgba(${fgColor}, 0.85)`);
+        drawMonitorLogo(ctx, pcX, pcY, 26, primaryColor);
         ctx.font = '500 15px "Inter", sans-serif';
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = primaryColor;
         ctx.textAlign = 'center';
         ctx.fillText('Мой ПК', pcX, pcY + 44);
         ctx.font = '12px "JetBrains Mono", monospace';
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+        ctx.fillStyle = `rgba(${fgColor}, 0.55)`;
         ctx.fillText('Прямой доступ', pcX, pcY + 62);
 
         // Right: Прокси-сервер with bordered badge
-        drawBadge(ctx, proxyX, proxyY, 26, 'rgba(255, 255, 255, 0.7)');
-        drawServerLogo(ctx, proxyX, proxyY, 26, 'rgba(255, 255, 255, 0.7)');
+        drawBadge(ctx, proxyX, proxyY, 26, `rgba(${fgColor}, 0.7)`);
+        drawServerLogo(ctx, proxyX, proxyY, 26, `rgba(${fgColor}, 0.7)`);
         ctx.font = '500 15px "Inter", sans-serif';
         ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
         ctx.fillText('Прокси-сервер', proxyX, proxyY + 44);
         ctx.font = '12px "JetBrains Mono", monospace';
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+        ctx.fillStyle = `rgba(${fgColor}, 0.45)`;
         ctx.fillText('Сессия закрыта', proxyX, proxyY + 62);
 
         // Center Step Indicator
@@ -606,7 +613,7 @@ export default function PlanetVisualizer({
         }
 
         ctx.font = '13px "JetBrains Mono", monospace';
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+        ctx.fillStyle = `rgba(${fgColor}, 0.95)`;
         ctx.fillText(stepText, centerX, centerY - 36);
         ctx.textAlign = 'left';
         return;
@@ -639,8 +646,8 @@ export default function PlanetVisualizer({
       ctx.strokeStyle = isRedAlert
         ? 'rgba(239, 68, 68, 0.65)'
         : isActive
-        ? `rgba(255, 255, 255, ${0.12 + hoverVal * 0.18})`
-        : `rgba(255, 255, 255, ${0.03 + hoverVal * 0.25})`;
+        ? `rgba(${fgColor}, ${0.12 + hoverVal * 0.18})`
+        : `rgba(${fgColor}, ${0.03 + hoverVal * 0.25})`;
       ctx.lineWidth = isRedAlert ? 1.5 : (1.0 + hoverVal * 0.6);
       ctx.stroke();
 
@@ -650,8 +657,8 @@ export default function PlanetVisualizer({
       ctx.strokeStyle = isRedAlert
         ? 'rgba(239, 68, 68, 0.9)'
         : isActive
-        ? `rgba(255, 255, 255, ${0.35 + hoverVal * 0.25})`
-        : `rgba(255, 255, 255, ${0.12 + hoverVal * 0.45})`;
+        ? `rgba(${fgColor}, ${0.35 + hoverVal * 0.25})`
+        : `rgba(${fgColor}, ${0.12 + hoverVal * 0.45})`;
       ctx.lineWidth = isRedAlert ? 1.75 : (1.2 + hoverVal * 0.6);
       ctx.stroke();
 
@@ -663,8 +670,8 @@ export default function PlanetVisualizer({
       const glowColor = isRedAlert
         ? 'rgba(239, 68, 68, 0.25)'
         : isActive
-        ? `rgba(255, 255, 255, ${0.05 + hoverVal * 0.05})`
-        : `rgba(255, 255, 255, ${0.015 + hoverVal * 0.08})`;
+        ? `rgba(${fgColor}, ${0.05 + hoverVal * 0.05})`
+        : `rgba(${fgColor}, ${0.015 + hoverVal * 0.08})`;
       glowGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
       glowGrad.addColorStop(1, glowColor);
       ctx.fillStyle = glowGrad;
@@ -688,7 +695,7 @@ export default function PlanetVisualizer({
         }
         ctx.strokeStyle = isRedAlert
           ? 'rgba(239, 68, 68, 0.15)'
-          : `rgba(255, 255, 255, ${latDeg === 0 ? (0.08 + hoverVal * 0.06) : (0.035 + hoverVal * 0.04)})`;
+          : `rgba(${fgColor}, ${latDeg === 0 ? (0.08 + hoverVal * 0.06) : (0.035 + hoverVal * 0.04)})`;
         ctx.lineWidth = latDeg === 0 ? 1 : 0.75;
         ctx.stroke();
       });
@@ -725,8 +732,8 @@ export default function PlanetVisualizer({
       ctx.strokeStyle = isRedAlert
         ? 'rgba(239, 68, 68, 0.45)'
         : isActive
-        ? `rgba(255, 255, 255, ${0.22 + hoverVal * 0.18})`
-        : `rgba(255, 255, 255, ${0.11 + hoverVal * 0.22})`;
+        ? `rgba(${fgColor}, ${0.22 + hoverVal * 0.18})`
+        : `rgba(${fgColor}, ${0.11 + hoverVal * 0.22})`;
       ctx.lineWidth = 1.0;
       ctx.stroke();
 
@@ -767,8 +774,8 @@ export default function PlanetVisualizer({
         ctx.fillStyle = isRedAlert
           ? 'rgba(239, 68, 68, 0.35)'
           : isActive
-          ? `rgba(255, 255, 255, ${0.22 + hoverVal * 0.2})`
-          : `rgba(255, 255, 255, ${0.1 + hoverVal * 0.25})`;
+          ? `rgba(${fgColor}, ${0.22 + hoverVal * 0.2})`
+          : `rgba(${fgColor}, ${0.1 + hoverVal * 0.25})`;
         ctx.fill();
       }
 
@@ -783,8 +790,8 @@ export default function PlanetVisualizer({
         ctx.fillStyle = isRedAlert
           ? 'rgba(239, 68, 68, 0.75)'
           : isActive
-          ? `rgba(255, 255, 255, ${0.65 + hoverVal * 0.2})`
-          : `rgba(255, 255, 255, ${0.32 + hoverVal * 0.35})`;
+          ? `rgba(${fgColor}, ${0.65 + hoverVal * 0.2})`
+          : `rgba(${fgColor}, ${0.32 + hoverVal * 0.35})`;
         ctx.fill();
       }
 
@@ -824,13 +831,13 @@ export default function PlanetVisualizer({
             ctx.lineWidth = 1;
           } else if (isActive) {
             ctx.strokeStyle = arc.primary
-              ? `rgba(255, 255, 255, ${0.65 + hoverVal * 0.25})`
-              : `rgba(255, 255, 255, ${0.22 + hoverVal * 0.1})`;
+              ? `rgba(${fgColor}, ${0.65 + hoverVal * 0.25})`
+              : `rgba(${fgColor}, ${0.22 + hoverVal * 0.1})`;
             ctx.lineWidth = arc.primary ? 2.0 : 1.0;
           } else {
             ctx.strokeStyle = arc.primary
-              ? `rgba(255, 255, 255, ${0.12 + hoverVal * 0.35})`
-              : 'rgba(255, 255, 255, 0.03)';
+              ? `rgba(${fgColor}, ${0.12 + hoverVal * 0.35})`
+              : `rgba(${fgColor}, 0.03)`;
             ctx.lineWidth = arc.primary ? (1.2 + hoverVal * 0.5) : 0.8;
           }
           ctx.stroke();
@@ -847,7 +854,7 @@ export default function PlanetVisualizer({
 
               if (pPt && pPt.z > -10) {
                 // Packet head
-                ctx.fillStyle = '#ffffff';
+                ctx.fillStyle = primaryColor;
                 ctx.beginPath();
                 ctx.arc(pPt.x, pPt.y, pkt.pulseSize, 0, Math.PI * 2);
                 ctx.fill();
@@ -855,7 +862,7 @@ export default function PlanetVisualizer({
                 // Trailing streak
                 const prevPt = curvePoints[Math.max(0, idx - 2)];
                 if (prevPt) {
-                  ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+                  ctx.strokeStyle = `rgba(${fgColor}, 0.45)`;
                   ctx.lineWidth = arc.primary ? 1.5 : 1.0;
                   ctx.beginPath();
                   ctx.moveTo(pPt.x, pPt.y);
@@ -877,8 +884,8 @@ export default function PlanetVisualizer({
           const logoColor = isRedAlert
             ? `rgba(239, 68, 68, ${alpha})`
             : isActive
-            ? `rgba(255, 255, 255, ${alpha * 0.95})`
-            : `rgba(255, 255, 255, ${Math.min(1, alpha * 0.55 + hoverVal * 0.35)})`;
+            ? `rgba(${fgColor}, ${alpha * 0.95})`
+            : `rgba(${fgColor}, ${Math.min(1, alpha * 0.55 + hoverVal * 0.35)})`;
 
           // Draw authentic official brand vector logo (borderless, zero enclosing boxes)
           const drawn = drawOfficialBrandLogo(ctx, node.logoType, pt.x, pt.y, 20, logoColor);
@@ -898,15 +905,15 @@ export default function PlanetVisualizer({
         const color = isRedAlert
           ? `rgba(239, 68, 68, ${alpha})`
           : isActive
-          ? `rgba(255, 255, 255, ${alpha * 0.95})`
-          : `rgba(255, 255, 255, ${Math.min(1, alpha * 0.6 + hoverVal * 0.35)})`;
+          ? `rgba(${fgColor}, ${alpha * 0.95})`
+          : `rgba(${fgColor}, ${Math.min(1, alpha * 0.6 + hoverVal * 0.35)})`;
 
         const badgeR = 15;
         const borderColor = isRedAlert
           ? `rgba(239, 68, 68, ${alpha * 0.9})`
           : isActive
-          ? `rgba(255, 255, 255, ${alpha * 0.9})`
-          : `rgba(255, 255, 255, ${Math.min(1, alpha * 0.55 + hoverVal * 0.4)})`;
+          ? `rgba(${fgColor}, ${alpha * 0.9})`
+          : `rgba(${fgColor}, ${Math.min(1, alpha * 0.55 + hoverVal * 0.4)})`;
 
         drawBadge(ctx, proxyPt.x, proxyPt.y, badgeR, borderColor);
         drawServerLogo(ctx, proxyPt.x, proxyPt.y, 16, color);
@@ -926,15 +933,15 @@ export default function PlanetVisualizer({
         const color = isRedAlert
           ? `rgba(239, 68, 68, ${alpha})`
           : isActive
-          ? `rgba(255, 255, 255, ${alpha * 0.95})`
-          : `rgba(255, 255, 255, ${Math.min(1, alpha * 0.6 + hoverVal * 0.35)})`;
+          ? `rgba(${fgColor}, ${alpha * 0.95})`
+          : `rgba(${fgColor}, ${Math.min(1, alpha * 0.6 + hoverVal * 0.35)})`;
 
         const badgeR = 15;
         const borderColor = isRedAlert
           ? `rgba(239, 68, 68, ${alpha * 0.9})`
           : isActive
-          ? `rgba(255, 255, 255, ${alpha * 0.9})`
-          : `rgba(255, 255, 255, ${Math.min(1, alpha * 0.55 + hoverVal * 0.4)})`;
+          ? `rgba(${fgColor}, ${alpha * 0.9})`
+          : `rgba(${fgColor}, ${Math.min(1, alpha * 0.55 + hoverVal * 0.4)})`;
 
         drawBadge(ctx, clientPt.x, clientPt.y, badgeR, borderColor);
         drawMonitorLogo(ctx, clientPt.x, clientPt.y, 16, color);
@@ -954,7 +961,7 @@ export default function PlanetVisualizer({
     return () => {
       cancelAnimationFrame(animId);
     };
-  }, [isActive, isConnecting, isDisconnecting, isUnconfiguredWarning, clientNode, proxyNode, companyNodes, arcs]);
+  }, [isActive, isConnecting, isDisconnecting, isUnconfiguredWarning, clientNode, proxyNode, companyNodes, arcs, isVela]);
 
   return (
     <div className={styles.wrapper}>
@@ -966,6 +973,16 @@ export default function PlanetVisualizer({
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseLeave}
       >
+        {isVela && (
+          <div style={{ position: 'absolute', top: 16, right: 20, zIndex: 5, pointerEvents: 'none' }}>
+            <img
+              src={clayIcons.dashboard}
+              alt="Dashboard"
+              style={{ width: '42px', height: '42px', objectFit: 'contain', filter: 'drop-shadow(0 4px 10px rgba(13,13,12,0.15))' }}
+              draggable={false}
+            />
+          </div>
+        )}
         <canvas
           ref={canvasRef}
           className={styles.canvas}
@@ -1034,7 +1051,7 @@ export default function PlanetVisualizer({
             title={t('planet.copyIp', 'Copy IP to clipboard')}
             style={{ width: '30px', height: '30px' }}
           >
-            {copied ? <Check size={13} color="#ffffff" /> : <Copy size={13} />}
+            {copied ? <Check size={13} color="var(--accent)" /> : <Copy size={13} />}
           </button>
         </div>
       </div>

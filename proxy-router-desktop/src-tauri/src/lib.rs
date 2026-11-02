@@ -9,6 +9,7 @@ use proxy::{
     reset_adapter_dns, restore_network_defaults, set_active_dns, set_autostart,
     set_system_proxy, set_terminal_env_proxy, start_embedded_pac_server,
     start_local_proxy_forwarder, test_dns_latency, test_upstream_proxy, update_pac_rules, update_tray_icon,
+    set_app_icon,
     update_upstream_proxy, window_close, window_minimize, window_toggle_maximize,
     set_window_effect, sanitize_startup_proxy, win32_proxy,
     TRAY_INACTIVE_BYTES,
@@ -35,74 +36,77 @@ pub fn run() {
             start_embedded_pac_server();
             start_local_proxy_forwarder();
 
-            // Setup System Tray
-            let initial_icon = Image::from_bytes(TRAY_INACTIVE_BYTES).expect("Failed to load tray icon");
-
-            let tray_menu = proxy::build_tray_menu(app.handle(), false)?;
-
-            let _tray = TrayIconBuilder::with_id("main_tray")
-                .icon(initial_icon)
-                .tooltip("Proxy Router: Disconnected")
-                .menu(&tray_menu)
-                .show_menu_on_left_click(false)
-                .on_menu_event(|app, event| {
-                    match event.id().as_ref() {
-                        "show_window" => {
-                            if let Some(w) = app.get_webview_window("main") {
-                                let _ = w.show();
-                                let _ = w.unminimize();
-                                let _ = w.set_focus();
-                            }
-                        }
-                        "hide_window" => {
-                            if let Some(w) = app.get_webview_window("main") {
-                                let _ = w.hide();
-                            }
-                        }
-                        "toggle_proxy" => {
-                            let _ = app.emit("tray-toggle-proxy", ());
-                        }
-                        "open_terminal" => {
-                            let _ = proxy::launch_proxied_terminal();
-                        }
-                        "quit_app" => {
-                            let _ = proxy::clear_system_proxy_sync();
-                            app.exit(0);
-                        }
-                        _ => {}
-                    }
-                })
-                .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click {
-                        button: MouseButton::Left,
-                        button_state: MouseButtonState::Up,
-                        ..
-                    } = event
-                    {
-                        let app = tray.app_handle();
-                        if let Some(w) = app.get_webview_window("main") {
-                            if w.is_visible().unwrap_or(false) {
-                                let _ = w.hide();
-                            } else {
-                                let _ = w.show();
-                                let _ = w.unminimize();
-                                let _ = w.set_focus();
-                            }
-                        }
-                    }
-                })
-                .build(app)?;
-
-            // Window initialization
+            // 1. Window initialization (Show immediately unless launched in silent autostart)
             if let Some(window) = app.get_webview_window("main") {
                 if let Some(icon) = app.default_window_icon() {
                     let _ = window.set_icon(icon.clone());
                 }
 
-                if !is_silent {
+                if is_silent {
+                    let _ = window.hide();
+                } else {
                     let _ = window.show();
                     let _ = window.unminimize();
                     let _ = window.set_focus();
+                }
+            }
+
+            // 2. Setup System Tray gracefully
+            if let Ok(initial_icon) = Image::from_bytes(TRAY_INACTIVE_BYTES) {
+                if let Ok(tray_menu) = proxy::build_tray_menu(app.handle(), false) {
+                    let tray_id = if cfg!(debug_assertions) { "main_tray_dev" } else { "main_tray" };
+                    let _ = TrayIconBuilder::with_id(tray_id)
+                        .icon(initial_icon)
+                        .tooltip("Proxy Router: Disconnected")
+                        .menu(&tray_menu)
+                        .show_menu_on_left_click(false)
+                        .on_menu_event(|app, event| {
+                            match event.id().as_ref() {
+                                "show_window" => {
+                                    if let Some(w) = app.get_webview_window("main") {
+                                        let _ = w.show();
+                                        let _ = w.unminimize();
+                                        let _ = w.set_focus();
+                                    }
+                                }
+                                "hide_window" => {
+                                    if let Some(w) = app.get_webview_window("main") {
+                                        let _ = w.hide();
+                                    }
+                                }
+                                "toggle_proxy" => {
+                                    let _ = app.emit("tray-toggle-proxy", ());
+                                }
+                                "open_terminal" => {
+                                    let _ = proxy::launch_proxied_terminal();
+                                }
+                                "quit_app" => {
+                                    let _ = proxy::clear_system_proxy_sync();
+                                    app.exit(0);
+                                }
+                                _ => {}
+                            }
+                        })
+                        .on_tray_icon_event(|tray, event| {
+                            if let TrayIconEvent::Click {
+                                button: MouseButton::Left,
+                                button_state: MouseButtonState::Up,
+                                ..
+                            } = event
+                            {
+                                let app = tray.app_handle();
+                                if let Some(w) = app.get_webview_window("main") {
+                                    if w.is_visible().unwrap_or(false) {
+                                        let _ = w.hide();
+                                    } else {
+                                        let _ = w.show();
+                                        let _ = w.unminimize();
+                                        let _ = w.set_focus();
+                                    }
+                                }
+                            }
+                        })
+                        .build(app);
                 }
             }
 
@@ -126,6 +130,7 @@ pub fn run() {
             get_autostart_status,
             set_autostart,
             update_tray_icon,
+            set_app_icon,
             get_network_adapters,
             set_active_dns,
             apply_adapter_dns,

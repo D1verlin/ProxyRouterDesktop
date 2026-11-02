@@ -7,10 +7,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { RefreshCw, Plus, Trash2, CheckCircle2, ShieldCheck } from 'lucide-react';
 import { useAppStore, getEffectiveApiUrl, getEffectiveAuthToken } from '../store/useAppStore';
 import { useTauri } from '../hooks/useTauri';
+import { clayIcons } from '../assets/clayIcons';
+import ClayIcon from '../components/ClayIcon';
 import styles from './Whitelist.module.css';
 
 export default function Whitelist() {
   const { state, dispatch, t } = useAppStore();
+  const isVela = state.customization?.theme === 'vela';
   const { serverConfig, publicIp } = state;
   const { apiWhitelistRequest } = useTauri();
   const [ips, setIps] = useState([]);
@@ -148,14 +151,19 @@ export default function Whitelist() {
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <div>
-          <h1 className={styles.title}>{t('whitelist.title', 'Server Whitelist')}</h1>
-          <p className={styles.subtitle}>
-            {t(
-              'whitelist.subtitle',
-              'Authorized IP addresses allowed to route through Squid proxy.'
-            )}
-          </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          {isVela && (
+            <ClayIcon icon={clayIcons.whitelist} tint="#10B981" size={42} />
+          )}
+          <div>
+            <h1 className={styles.title}>{t('whitelist.title', 'Server Whitelist')}</h1>
+            <p className={styles.subtitle}>
+              {t(
+                'whitelist.subtitle',
+                'Authorized IP addresses allowed to route through Squid proxy.'
+              )}
+            </p>
+          </div>
         </div>
         <button
           type="button"

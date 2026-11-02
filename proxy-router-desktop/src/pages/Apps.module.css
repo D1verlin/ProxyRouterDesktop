@@ -258,3 +258,77 @@
   border-radius: var(--r-md);
   background: var(--bg-surface-2);
 }
+
+/* в”Ђв”Ђв”Ђ Vela Theme Light & Contrast Overrides в”Ђв”Ђв”Ђ */
+:global([data-theme="vela"]) .title {
+  color: #0D0D0C !important;
+  font-size: 20px !important;
+  font-weight: 600 !important;
+}
+
+:global([data-theme="vela"]) .subtitle {
+  color: rgba(13, 13, 12, 0.65) !important;
+  font-size: 13px !important;
+}
+
+:global([data-theme="vela"]) .configCard,
+:global([data-theme="vela"]) .appCard,
+:global([data-theme="vela"]) .terminalCard,
+:global([data-theme="vela"]) .empty {
+  background: rgba(255, 255, 255, 0.52) !important;
+  backdrop-filter: blur(16px) saturate(130%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(130%) !important;
+  border: 1.2px solid rgba(13, 13, 12, 0.09) !important;
+  box-shadow: 0 4px 20px rgba(13, 13, 12, 0.02) !important;
+}
+
+:global([data-theme="vela"]) .cardIcon {
+  background: rgba(255, 255, 255, 0.40) !important;
+  border: 1.2px solid rgba(13, 13, 12, 0.10) !important;
+  color: #0D0D0C !important;
+}
+
+:global([data-theme="vela"]) .pill {
+  background: rgba(255, 255, 255, 0.50) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  border: 1.2px solid rgba(13, 13, 12, 0.12) !important;
+  color: #0D0D0C !important;
+}
+
+:global([data-theme="vela"]) .pillActive {
+  background: #0D0D0C !important;
+  color: #FBF6EF !important;
+  border-color: #0D0D0C !important;
+  font-weight: 600;
+}
+
+:global([data-theme="vela"]) .success {
+  background: rgba(16, 185, 129, 0.10) !important;
+  border: 1px solid rgba(16, 185, 129, 0.35) !important;
+  color: #065F46 !important;
+}
+
+:global([data-theme="vela"]) .error {
+  background: rgba(220, 38, 38, 0.10) !important;
+  border: 1px solid rgba(220, 38, 38, 0.30) !important;
+  color: #991B1B !important;
+}
+
+:global([data-theme="vela"]) .toggle {
+  background: rgba(255, 255, 255, 0.65) !important;
+  border: 1.2px solid rgba(13, 13, 12, 0.18) !important;
+}
+
+:global([data-theme="vela"]) .toggleThumb {
+  background: rgba(13, 13, 12, 0.40) !important;
+}
+
+:global([data-theme="vela"]) .toggleOn {
+  background: #0D0D0C !important;
+  border-color: #0D0D0C !important;
+}
+
+:global([data-theme="vela"]) .toggleOn .toggleThumb {
+  background: #FBF6EF !important;
+}

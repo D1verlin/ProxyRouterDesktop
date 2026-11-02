@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
-use tauri::{command, AppHandle, Window};
+use tauri::{command, AppHandle, Manager, Window};
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
@@ -414,13 +414,31 @@ pub fn start_embedded_pac_server() {
 
     thread::spawn(move || {
         let listener = match TcpListener::bind("127.0.0.1:8182") {
-            Ok(l) => l,
+            Ok(l) => {
+                println!("[embedded-pac] Native PAC server listening on http://127.0.0.1:8182/proxy.pac");
+                l
+            }
             Err(e) => {
-                eprintln!("[embedded-pac] Could not bind to 127.0.0.1:8182: {}", e);
-                return;
+                #[cfg(debug_assertions)]
+                {
+                    match TcpListener::bind("127.0.0.1:18182") {
+                        Ok(l) => {
+                            println!("[embedded-pac] Dev PAC server listening on http://127.0.0.1:18182/proxy.pac");
+                            l
+                        }
+                        Err(_) => {
+                            println!("[embedded-pac] Port 8182 in use by primary running instance; using primary PAC service ({})", e);
+                            return;
+                        }
+                    }
+                }
+                #[cfg(not(debug_assertions))]
+                {
+                    eprintln!("[embedded-pac] Could not bind to 127.0.0.1:8182: {}", e);
+                    return;
+                }
             }
         };
-        println!("[embedded-pac] Native PAC server listening on http://127.0.0.1:8182/proxy.pac");
 
         for stream in listener.incoming() {
             if let Ok(mut stream) = stream {
@@ -665,13 +683,31 @@ fn forward_https_upstream(
 pub fn start_local_proxy_forwarder() {
     thread::spawn(|| {
         let listener = match TcpListener::bind("127.0.0.1:8183") {
-            Ok(l) => l,
+            Ok(l) => {
+                println!("[local-forwarder] Native Proxy Forwarder listening on http://127.0.0.1:8183");
+                l
+            }
             Err(e) => {
-                eprintln!("[local-forwarder] Could not bind to 127.0.0.1:8183: {}", e);
-                return;
+                #[cfg(debug_assertions)]
+                {
+                    match TcpListener::bind("127.0.0.1:18183") {
+                        Ok(l) => {
+                            println!("[local-forwarder] Dev forwarder listening on http://127.0.0.1:18183");
+                            l
+                        }
+                        Err(_) => {
+                            println!("[local-forwarder] Port 8183 in use by primary running instance; using primary forwarder ({})", e);
+                            return;
+                        }
+                    }
+                }
+                #[cfg(not(debug_assertions))]
+                {
+                    eprintln!("[local-forwarder] Could not bind to 127.0.0.1:8183: {}", e);
+                    return;
+                }
             }
         };
-        println!("[local-forwarder] Native Proxy Forwarder listening on http://127.0.0.1:8183");
 
         for stream in listener.incoming() {
             if let Ok(mut client) = stream {
@@ -2218,7 +2254,8 @@ pub fn build_tray_menu<R: tauri::Runtime>(
 
 #[command]
 pub fn update_tray_icon(app: AppHandle, active: bool) -> Result<(), String> {
-    if let Some(tray) = app.tray_by_id("main_tray") {
+    let tray = app.tray_by_id("main_tray").or_else(|| app.tray_by_id("main_tray_dev"));
+    if let Some(tray) = tray {
         let img_bytes = if active { TRAY_ACTIVE_BYTES } else { TRAY_INACTIVE_BYTES };
         if let Ok(icon) = Image::from_bytes(img_bytes) {
             let _ = tray.set_icon(Some(icon));
@@ -2234,6 +2271,44 @@ pub fn update_tray_icon(app: AppHandle, active: bool) -> Result<(), String> {
             let _ = tray.set_menu(Some(menu));
         }
     }
+    Ok(())
+}
+
+#[command]
+pub fn set_app_icon(app: AppHandle, icon_id: String) -> Result<(), String> {
+    let window_bytes: &[u8] = match icon_id.as_str() {
+        "vela-cream" => include_bytes!("../icons/variants/vela-cream-256.png"),
+        "vela-amber" => include_bytes!("../icons/variants/vela-amber-256.png"),
+        "sunset-peach" => include_bytes!("../icons/variants/sunset-peach-256.png"),
+        "lilac-lavender" => include_bytes!("../icons/variants/lilac-lavender-256.png"),
+        "cyber-emerald" => include_bytes!("../icons/variants/cyber-emerald-256.png"),
+        "midnight-white" => include_bytes!("../icons/variants/midnight-white-256.png"),
+        _ => include_bytes!("../icons/variants/monolith-256.png"),
+    };
+
+    let tray_bytes: &[u8] = match icon_id.as_str() {
+        "vela-cream" => include_bytes!("../icons/variants/vela-cream-32.png"),
+        "vela-amber" => include_bytes!("../icons/variants/vela-amber-32.png"),
+        "sunset-peach" => include_bytes!("../icons/variants/sunset-peach-32.png"),
+        "lilac-lavender" => include_bytes!("../icons/variants/lilac-lavender-32.png"),
+        "cyber-emerald" => include_bytes!("../icons/variants/cyber-emerald-32.png"),
+        "midnight-white" => include_bytes!("../icons/variants/midnight-white-32.png"),
+        _ => include_bytes!("../icons/variants/monolith-32.png"),
+    };
+
+    if let Ok(window_icon) = Image::from_bytes(window_bytes) {
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.set_icon(window_icon);
+        }
+    }
+
+    if let Ok(tray_icon) = Image::from_bytes(tray_bytes) {
+        let tray = app.tray_by_id("main_tray").or_else(|| app.tray_by_id("main_tray_dev"));
+        if let Some(tray) = tray {
+            let _ = tray.set_icon(Some(tray_icon));
+        }
+    }
+
     Ok(())
 }
 
