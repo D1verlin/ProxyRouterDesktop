@@ -1,0 +1,124 @@
+{
+  "isActive": false,
+  "systemProxyMode": "forwarder",
+  "autoWhitelist": true,
+  "server": {
+    "host": "your-server-ip",
+    "apiUrl": "http://your-server-ip:1135",
+    "authToken": "your-secret-token",
+    "protocol": "socks5",
+    "port": 1080,
+    "availablePorts": {
+      "http": 3128,
+      "https": 8443,
+      "socks5": 1080
+    },
+    "ignoreTls": true
+  },
+  "pacPort": 8182,
+  "forwarderPort": 8183,
+  "routedSites": [
+    {
+      "id": "gemini",
+      "label": "Google Gemini & Studio",
+      "category": "Google AI",
+      "enabled": true,
+      "hosts": [
+        "gemini.google.com", "bard.google.com", "notebook.google", "*.notebook.google",
+        "notebooklm.google", "*.notebooklm.google", "notebook.google.com", "*.notebook.google.com",
+        "notebooklm.google.com", "*.notebooklm.google.com", "clientlog.cloud.google", "cloud.google",
+        "proactivebackend-pa.googleapis.com", "generativelanguage.googleapis.com",
+        "alkalimakersuite-pa.clients6.google.com", "alkalimakersuite-pa.googleapis.com",
+        "apis.google.com", "accounts.google.com", "ssl.gstatic.com", "www.gstatic.com",
+        "gstatic.com", "googleusercontent.com", "deepmind.google", "aistudio.google.com",
+        "googleapis.com", "clients6.google.com", "ai.google.dev", "makersuite.google.com"
+      ]
+    },
+    {
+      "id": "chatgpt",
+      "label": "ChatGPT & OpenAI API",
+      "category": "OpenAI",
+      "enabled": true,
+      "hosts": [
+        "chatgpt.com", "chat.openai.com", "oaistatic.com", "oaiusercontent.com",
+        "openai.com", "api.openai.com", "platform.openai.com"
+      ]
+    },
+    {
+      "id": "claude",
+      "label": "Claude & Anthropic",
+      "category": "Anthropic",
+      "enabled": true,
+      "hosts": [
+        "claude.ai", "anthropic.com", "claudeusercontent.com", "api.anthropic.com", "*.anthropic.com"
+      ]
+    },
+    {
+      "id": "antigravity",
+      "label": "Antigravity & DeepMind",
+      "category": "Google AI",
+      "enabled": true,
+      "hosts": [
+        "*.antigravity.google", "antigravity.google", "*.deepmind.google", "deepmind.google", "*.deepmind.com",
+        "daily-cloudcode-pa.googleapis.com", "cloudcode-pa.googleapis.com"
+      ]
+    },
+    {
+      "id": "deepl",
+      "label": "DeepL Translator & Linguee",
+      "category": "Inference",
+      "enabled": true,
+      "hosts": [
+        "deepl.com", "*.deepl.com", "www.deepl.com", "api.deepl.com", "api-free.deepl.com",
+        "static.deepl.com", "s.deepl.com", "w.deepl.com", "identity.deepl.com", "dict.deepl.com",
+        "linguee.com", "*.linguee.com", "deepl-partners.com", "*.deepl-partners.com"
+      ]
+    },
+    {
+      "id": "perplexity",
+      "label": "Perplexity AI",
+      "category": "Inference",
+      "enabled": true,
+      "hosts": [
+        "perplexity.ai", "*.perplexity.ai"
+      ]
+    },
+    {
+      "id": "groq",
+      "label": "Groq Cloud LPU",
+      "category": "Inference",
+      "enabled": true,
+      "hosts": [
+        "groq.com", "api.groq.com", "*.groq.com"
+      ]
+    },
+    {
+      "id": "openrouter",
+      "label": "OpenRouter",
+      "category": "Inference",
+      "enabled": true,
+      "hosts": [
+        "openrouter.ai", "*.openrouter.ai"
+      ]
+    },
+    {
+      "id": "huggingface",
+      "label": "Hugging Face Hub",
+      "category": "Inference",
+      "enabled": true,
+      "hosts": [
+        "huggingface.co", "*.huggingface.co", "api-inference.huggingface.co"
+      ]
+    },
+    {
+      "id": "midjourney",
+      "label": "Midjourney",
+      "category": "Generative",
+      "enabled": true,
+      "hosts": [
+        "midjourney.com", "*.midjourney.com"
+      ]
+    }
+  ],
+  "customDomains": []
+}

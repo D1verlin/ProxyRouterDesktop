@@ -60,7 +60,7 @@ SCRIPT_PATH = os.getenv("IP_MANAGER_SCRIPT", "/usr/local/bin/ip_manager.sh")
 if not os.path.exists(SCRIPT_PATH) and os.path.exists("/opt/squid-bot/ip_manager.sh"):
     SCRIPT_PATH = "/opt/squid-bot/ip_manager.sh"
 
-SERVER_HOST = os.getenv("SERVER_HOST", "2.27.25.190")
+SERVER_HOST = os.getenv("SERVER_HOST", "")
 WEB_PORT = int(os.getenv("WEB_PORT", "8080"))
 
 bot = Bot(token=BOT_TOKEN)
