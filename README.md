@@ -10,7 +10,7 @@
 **Высокопроизводительное решение для выборочного проксирования (Split Tunneling) доменов и процессов.**  
 Поддержка **Windows** (Tauri 2 + React 19 + Rust) и **Linux** (виджет для Omarchy / Hyprland + CLI), протоколов **HTTP**, **HTTPS (TLS)**, **SOCKS5**, встроенный DNS-бенчмарк и защита доступа через ядро Linux (**nftables + GOST v3**).
 
-[Релизы](https://github.com/D1verlin/ProxyRouterDesktop/releases) • [Виджет Omarchy (Linux)](omarchy-widget/README.md) • [Быстрый деплой сервера (GOST v3)](deploy-gost/README.md) • [Сообщить об ошибке](https://github.com/D1verlin/ProxyRouterDesktop/issues)
+[Официальный сайт](https://d1verlin.github.io/ProxyRouterDesktop/) • [Релизы](https://github.com/D1verlin/ProxyRouterDesktop/releases) • [Руководство по настройке](SETUP_GUIDE.md) • [Виджет Omarchy (Linux)](omarchy-widget/README.md) • [Быстрый деплой сервера (GOST v3)](deploy-gost/README.md) • [Сообщить об ошибке](https://github.com/D1verlin/ProxyRouterDesktop/issues)
 
 </div>
 
