@@ -8,7 +8,7 @@
 
 **Windows-клиент для выборочного проксирования (Split Tunneling) доменов и процессов.**
 
-[Релизы](https://github.com/D1verlin/ProxyRouterDesktop/releases) • [Серверная часть](../server/README.md) • [Баг-трекер](https://github.com/D1verlin/ProxyRouterDesktop/issues)
+[Релизы](https://github.com/D1verlin/ProxyRouterDesktop/releases) • [Серверная часть (GOST v3)](../deploy-gost/README.md) • [Баг-трекер](https://github.com/D1verlin/ProxyRouterDesktop/issues)
 
 </div>
 

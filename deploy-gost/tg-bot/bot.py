@@ -60,7 +60,16 @@ SCRIPT_PATH = os.getenv("IP_MANAGER_SCRIPT", "/usr/local/bin/ip_manager.sh")
 if not os.path.exists(SCRIPT_PATH) and os.path.exists("/opt/squid-bot/ip_manager.sh"):
     SCRIPT_PATH = "/opt/squid-bot/ip_manager.sh"
 
-SERVER_HOST = os.getenv("SERVER_HOST", "")
+SERVER_HOST = os.getenv("SERVER_HOST", "").strip()
+if not SERVER_HOST or SERVER_HOST == "your_server_ip":
+    try:
+        import urllib.request
+        with urllib.request.urlopen("https://api.ipify.org", timeout=5) as _resp:
+            detected_ip = _resp.read().decode("utf-8").strip()
+            if detected_ip:
+                SERVER_HOST = detected_ip
+    except Exception:
+        pass
 WEB_PORT = int(os.getenv("WEB_PORT", "8080"))
 
 bot = Bot(token=BOT_TOKEN)
@@ -233,6 +242,17 @@ async def get_link_handler(callback: CallbackQuery):
         "user_id": callback.from_user.id,
         "expires_at": time.time() + 600,
     }
+
+    if not SERVER_HOST or SERVER_HOST == "your_server_ip":
+        await callback.message.edit_text(
+            "⚠️ **SERVER_HOST не настроен**\n\n"
+            "В файле `.env` не указан публичный IP-адрес сервера (`SERVER_HOST`).\n"
+            "Пожалуйста, добавьте IP вручную через меню бота или укажите `SERVER_HOST` в `.env`.",
+            parse_mode="Markdown",
+            reply_markup=main_menu_kb(),
+        )
+        await callback.answer()
+        return
 
     url = f"http://{SERVER_HOST}:{WEB_PORT}/add-my-ip?token={token}"
 

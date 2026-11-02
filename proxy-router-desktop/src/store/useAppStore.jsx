@@ -465,8 +465,10 @@ export function getEffectiveAuthToken(serverConfig) {
 export function getEffectiveProxyHost(serverConfig) {
   try {
     if (serverConfig?.apiUrl) {
-      const h = new URL(serverConfig.apiUrl).hostname;
-      if (h && h !== 'localhost' && h !== '127.0.0.1' && !h.includes('your-server-ip')) {
+      const raw = serverConfig.apiUrl.trim();
+      const url = raw.startsWith('http') ? raw : `http://${raw}`;
+      const h = new URL(url).hostname;
+      if (h && !h.includes('your-server-ip')) {
         return h;
       }
     }

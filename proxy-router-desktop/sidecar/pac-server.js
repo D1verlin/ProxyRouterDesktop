@@ -61,7 +61,8 @@ let config = {
 
 // ── PAC generator ─────────────────────────────────────────────────────────────
 function generatePac(cfg) {
-  const proxy = `PROXY ${cfg.proxyHost}:${cfg.proxyPort}`;
+  const host = (cfg.proxyHost || '').trim();
+  const proxy = host ? `PROXY ${host}:${cfg.proxyPort}` : 'DIRECT';
   
   const rawHosts = [...(cfg.enabledHosts || []), ...(cfg.customDomains || [])];
   const seen = new Set();

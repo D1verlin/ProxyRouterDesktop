@@ -308,10 +308,15 @@ pub fn should_proxy_host(target: &str) -> bool {
 }
 
 fn generate_pac_script(proxy_host: &str, proxy_port: u16, protocol: UpstreamProtocol, hosts: &[String]) -> String {
-    let proxy = match protocol {
-        UpstreamProtocol::Http => format!("PROXY {}:{}", proxy_host, proxy_port),
-        UpstreamProtocol::Https => format!("HTTPS {}:{}; PROXY {}:{}", proxy_host, proxy_port, proxy_host, proxy_port),
-        UpstreamProtocol::Socks5 => format!("SOCKS5 {}:{}; SOCKS {}:{}", proxy_host, proxy_port, proxy_host, proxy_port),
+    let trimmed_host = proxy_host.trim();
+    let proxy = if trimmed_host.is_empty() {
+        "DIRECT".to_string()
+    } else {
+        match protocol {
+            UpstreamProtocol::Http => format!("PROXY {}:{}", trimmed_host, proxy_port),
+            UpstreamProtocol::Https => format!("HTTPS {}:{}; PROXY {}:{}", trimmed_host, proxy_port, trimmed_host, proxy_port),
+            UpstreamProtocol::Socks5 => format!("SOCKS5 {}:{}; SOCKS {}:{}", trimmed_host, proxy_port, trimmed_host, proxy_port),
+        }
     };
     let mut conditions = Vec::new();
     let mut seen = std::collections::HashSet::new();
@@ -955,10 +960,7 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
 
 fn resolve_effective_proxy_target(host: &str, port: u16) -> (String, u16) {
     let trimmed = host.trim();
-    let eff_host = if trimmed.contains("your-server-ip")
-        || trimmed == "127.0.0.1"
-        || trimmed == "localhost"
-    {
+    let eff_host = if trimmed.is_empty() || trimmed.contains("your-server-ip") {
         "".to_string()
     } else {
         trimmed.to_string()

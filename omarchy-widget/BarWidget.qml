@@ -26,8 +26,14 @@ BarWidget {
   property string lastUpdated: ""
   property var configData: null
 
-  readonly property string homeDir: Quickshell.env("HOME") || "/home/anhelm"
-  readonly property string ctlScript: homeDir + "/projects/ProxyRouterDesktop/omarchy-widget/proxy_router_ctl.py"
+  readonly property string homeDir: Quickshell.env("HOME") || ""
+  readonly property string ctlScript: {
+    var resolved = String(Qt.resolvedUrl("proxy_router_ctl.py")).replace(/^file:\/\//, "")
+    if (resolved && resolved.indexOf("proxy_router_ctl.py") !== -1) {
+      return resolved
+    }
+    return homeDir + "/.config/omarchy/plugins/proxy-router/proxy_router_ctl.py"
+  }
 
   readonly property color statusColor: {
     if (!vpsHealth) return Color.urgent
