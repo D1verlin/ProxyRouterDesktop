@@ -48,17 +48,32 @@ function isTokenValid(token) {
   if (AUTH_TOKEN && token === AUTH_TOKEN) return { valid: true, user: 'primary' };
   if (AUTH_TOKENS.includes(token)) return { valid: true, user: 'env-user' };
 
-  if (fs.existsSync(TOKENS_FILE)) {
-    try {
-      const data = JSON.parse(fs.readFileSync(TOKENS_FILE, 'utf8'));
-      if (Array.isArray(data) && data.includes(token)) {
-        return { valid: true, user: 'token-list' };
+  const candidateFiles = [
+    TOKENS_FILE,
+    '/opt/proxy-whitelist-api/tokens.json',
+    path.join(__dirname, 'tokens.json'),
+  ];
+
+  const seen = new Set();
+  for (const file of candidateFiles) {
+    if (!file || seen.has(file)) continue;
+    seen.add(file);
+
+    if (fs.existsSync(file)) {
+      try {
+        let raw = fs.readFileSync(file, 'utf8').trim();
+        // Auto-fix trailing commas before closing braces (common JSON syntax mistake)
+        raw = raw.replace(/,\s*([}\]])/g, '$1');
+        const data = JSON.parse(raw);
+        if (Array.isArray(data) && data.includes(token)) {
+          return { valid: true, user: 'token-list' };
+        }
+        if (typeof data === 'object' && data !== null && data[token]) {
+          return { valid: true, user: data[token] };
+        }
+      } catch (err) {
+        log('warn', `Failed to parse ${file}`, { error: err.message });
       }
-      if (typeof data === 'object' && data !== null && data[token]) {
-        return { valid: true, user: data[token] };
-      }
-    } catch (err) {
-      log('warn', 'Failed to read tokens.json', { error: err.message });
     }
   }
 
