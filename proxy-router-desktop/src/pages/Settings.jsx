@@ -43,7 +43,7 @@ import ClayIcon from '../components/ClayIcon';
 import { APP_ICONS } from '../assets/appIconsRegistry';
 import styles from './Settings.module.css';
 
-const CURRENT_VERSION = '1.0.22';
+const CURRENT_VERSION = '1.0.23';
 const GITHUB_REPO = 'D1verlin/ProxyRouterDesktop';
 const GITHUB_REPO_URL = 'https://github.com/D1verlin/ProxyRouterDesktop';
 const GITHUB_RELEASES_URL = 'https://github.com/D1verlin/ProxyRouterDesktop/releases';

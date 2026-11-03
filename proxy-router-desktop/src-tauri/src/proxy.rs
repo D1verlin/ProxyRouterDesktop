@@ -2296,17 +2296,72 @@ pub fn set_app_icon(app: AppHandle, icon_id: String) -> Result<(), String> {
         _ => include_bytes!("../icons/variants/monolith-32.png"),
     };
 
+    let ico_bytes: &[u8] = match icon_id.as_str() {
+        "vela-cream" => include_bytes!("../icons/variants/vela-cream.ico"),
+        "vela-amber" => include_bytes!("../icons/variants/vela-amber.ico"),
+        "sunset-peach" => include_bytes!("../icons/variants/sunset-peach.ico"),
+        "lilac-lavender" => include_bytes!("../icons/variants/lilac-lavender.ico"),
+        "cyber-emerald" => include_bytes!("../icons/variants/cyber-emerald.ico"),
+        "midnight-white" => include_bytes!("../icons/variants/midnight-white.ico"),
+        _ => include_bytes!("../icons/variants/monolith.ico"),
+    };
+
+    // 1. Standard Tauri window icon
     if let Ok(window_icon) = Image::from_bytes(window_bytes) {
         if let Some(window) = app.get_webview_window("main") {
             let _ = window.set_icon(window_icon);
         }
     }
 
+    // 2. System tray icon
     if let Ok(tray_icon) = Image::from_bytes(tray_bytes) {
         let tray = app.tray_by_id("main_tray").or_else(|| app.tray_by_id("main_tray_dev"));
         if let Some(tray) = tray {
             let _ = tray.set_icon(Some(tray_icon));
         }
+    }
+
+    // 3. Windows Native Taskbar & Shell Shortcut Synchronization
+    #[cfg(windows)]
+    {
+        if let Some(window) = app.get_webview_window("main") {
+            if let Ok(hwnd_obj) = window.hwnd() {
+                let hwnd = hwnd_obj.0;
+                unsafe {
+                    let hicon_big = win32_icon::CreateIconFromResourceEx(
+                        window_bytes.as_ptr(),
+                        window_bytes.len() as u32,
+                        1,
+                        0x00030000,
+                        256,
+                        256,
+                        0,
+                    );
+                    let hicon_small = win32_icon::CreateIconFromResourceEx(
+                        tray_bytes.as_ptr(),
+                        tray_bytes.len() as u32,
+                        1,
+                        0x00030000,
+                        32,
+                        32,
+                        0,
+                    );
+                    if hicon_big != 0 {
+                        win32_icon::SendMessageW(hwnd, 0x0080 /* WM_SETICON */, 1 /* ICON_BIG */, hicon_big);
+                        #[cfg(target_pointer_width = "64")]
+                        win32_icon::SetClassLongPtrW(hwnd, -14 /* GCLP_HICON */, hicon_big);
+                    }
+                    if hicon_small != 0 {
+                        win32_icon::SendMessageW(hwnd, 0x0080 /* WM_SETICON */, 0 /* ICON_SMALL */, hicon_small);
+                        #[cfg(target_pointer_width = "64")]
+                        win32_icon::SetClassLongPtrW(hwnd, -34 /* GCLP_HICONSM */, hicon_small);
+                    }
+                }
+            }
+        }
+
+        // Persist active .ico to local app data and update Windows shortcuts
+        win32_icon::sync_windows_shortcuts_icon(ico_bytes);
     }
 
     Ok(())
@@ -2379,6 +2434,95 @@ pub fn set_window_effect(window: Window, effect: String, color: Option<(u8, u8, 
 }
 
 // ── Native Win32 Registry & Shutdown Safety ──────────────────────────────────
+
+#[cfg(windows)]
+pub mod win32_icon {
+    use std::ptr::null;
+
+    #[link(name = "user32")]
+    extern "system" {
+        pub fn CreateIconFromResourceEx(
+            pbIconBits: *const u8,
+            cbIconBits: u32,
+            fIcon: i32,
+            dwVersion: u32,
+            cxDesired: i32,
+            cyDesired: i32,
+            uFlags: u32,
+        ) -> isize;
+
+        pub fn SendMessageW(
+            hWnd: *mut std::ffi::c_void,
+            Msg: u32,
+            wParam: usize,
+            lParam: isize,
+        ) -> isize;
+
+        #[cfg(target_pointer_width = "64")]
+        pub fn SetClassLongPtrW(
+            hWnd: *mut std::ffi::c_void,
+            nIndex: i32,
+            dwNewLong: isize,
+        ) -> usize;
+    }
+
+    #[link(name = "shell32")]
+    extern "system" {
+        pub fn SHChangeNotify(
+            wEventId: i32,
+            uFlags: u32,
+            dwItem1: *const std::ffi::c_void,
+            dwItem2: *const std::ffi::c_void,
+        );
+    }
+
+    pub fn sync_windows_shortcuts_icon(ico_bytes: &[u8]) {
+        let local_app_data = std::env::var("LOCALAPPDATA")
+            .or_else(|_| std::env::var("APPDATA"))
+            .unwrap_or_else(|_| ".".into());
+        let app_dir = std::path::PathBuf::from(local_app_data).join("Proxy Router Desktop");
+        let _ = std::fs::create_dir_all(&app_dir);
+        let ico_path = app_dir.join("app_icon.ico");
+
+        if std::fs::write(&ico_path, ico_bytes).is_ok() {
+            let ico_str = ico_path.to_string_lossy();
+            let script = format!(
+                r#"
+$ico = '{}'
+$ws = New-Object -ComObject WScript.Shell
+$targets = @(
+    "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Proxy Router Desktop.lnk",
+    "$env:USERPROFILE\Desktop\Proxy Router Desktop.lnk",
+    "$env:APPDATA\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar\Proxy Router Desktop.lnk"
+)
+foreach ($t in $targets) {{
+    if (Test-Path $t) {{
+        try {{
+            $s = $ws.CreateShortcut($t)
+            $s.IconLocation = "$ico,0"
+            $s.Save()
+        }} catch {{}}
+    }}
+}}
+"#,
+                ico_str
+            );
+
+            let mut cmd = std::process::Command::new("powershell");
+            cmd.args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", &script]);
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+            }
+            let _ = cmd.spawn();
+
+            unsafe {
+                SHChangeNotify(0x08000000 /* SHCNE_ASSOCCHANGED */, 0x0000 /* SHCNF_IDLIST */, null(), null());
+            }
+        }
+    }
+}
 
 #[cfg(windows)]
 pub mod win32_proxy {

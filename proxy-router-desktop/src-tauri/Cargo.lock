@@ -2758,7 +2758,7 @@ dependencies = [
 
 [[package]]
 name = "proxy-router-desktop"
-version = "1.0.22"
+version = "1.0.23"
 dependencies = [
  "native-tls",
  "serde",
