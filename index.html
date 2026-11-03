@@ -1570,11 +1570,11 @@
         <!-- Action Row (Buttons + Caption) -->
         <div class="action-row">
           <div class="action-buttons">
-            <a href="https://github.com/D1verlin/ProxyRouterDesktop/releases/download/v1.0.21/Proxy.Router.Desktop_1.0.21_x64-setup.exe" target="_blank" rel="noopener" class="action-btn" id="windowsStoreBtn">
+            <a href="https://github.com/D1verlin/ProxyRouterDesktop/releases/download/v1.0.23/Proxy.Router.Desktop_1.0.23_x64-setup.exe" target="_blank" rel="noopener" class="action-btn" id="windowsStoreBtn">
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/>
               </svg>
-              <span>Windows (x64) • v1.0.21 .exe</span>
+              <span>Windows (x64) • v1.0.23 .exe</span>
             </a>
 
             <a class="action-btn" id="omarchyWidgetBtn" role="button" tabindex="0">
@@ -1740,7 +1740,7 @@
               </div>
               <div>
                 <strong>Whitelist REST API:</strong> порт <code>1135</code><br>
-                <strong>Токен авторизации:</strong> <code>/etc/gost/api_token.txt</code><br>
+                <strong>Токен авторизации:</strong> <code>/opt/proxy-whitelist-api/tokens.json</code><br>
                 <strong>Файрвол:</strong> Stealth nftables (чужие IP отбрасываются через DROP)
               </div>
             </div>
@@ -1758,7 +1758,7 @@
             <ul>
               <li><strong>Хост сервера:</strong> IP-адрес вашего VPS сервера.</li>
               <li><strong>API URL:</strong> <code>http://YOUR_SERVER_IP:1135</code></li>
-              <li><strong>Токен авторизации:</strong> секретный токен из <code>/etc/gost/api_token.txt</code>.</li>
+              <li><strong>Токен авторизации:</strong> секретный токен из <code>/opt/proxy-whitelist-api/tokens.json</code>.</li>
               <li><strong>Протокол:</strong> выберите <code>HTTP (порт 3128)</code> или <code>SOCKS5 (порт 1080)</code>.</li>
             </ul>
             <p>3. Включите <strong>Авто-вайтлист (Auto Whitelist)</strong> — приложение само будет отправлять ваш домашний IP на сервер при запуске.</p>
@@ -2031,7 +2031,7 @@
             }
           })
           .catch(function(err) {
-            // Graceful fallback to static v1.0.21 direct link
+            // Graceful fallback to static v1.0.23 direct link
           });
       })();
 
