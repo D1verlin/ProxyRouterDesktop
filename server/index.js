@@ -137,8 +137,27 @@ function requireAuth(req, res, next) {
 
 // ── Routes ───────────────────────────────────────────────────────────────────
 
+/** Root welcome & status endpoint */
+app.get('/', (_req, res) => {
+  res.json({
+    ok: true,
+    service: 'Proxy Router Whitelist API',
+    uptime: process.uptime(),
+    endpoints: {
+      health: 'GET /health',
+      status: 'GET /api/status',
+      whitelist: 'GET, POST, DELETE /api/whitelist',
+    },
+  });
+});
+
 /** Health check */
 app.get('/health', (_req, res) => res.json({ ok: true, uptime: process.uptime() }));
+
+/** Friendly status endpoint */
+app.get('/api/status', (_req, res) => {
+  res.json({ ok: true, status: 'online', uptime: process.uptime() });
+});
 
 /** Add IP to whitelist */
 app.post('/api/whitelist', requireAuth, async (req, res) => {

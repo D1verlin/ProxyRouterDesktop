@@ -56,7 +56,8 @@ export default function Whitelist() {
         },
       });
     } catch (err) {
-      setNotice({ type: 'error', text: `Failed to load whitelist: ${err.message}` });
+      const errMsg = err?.message || (typeof err === 'string' ? err : String(err));
+      setNotice({ type: 'error', text: `Failed to load whitelist: ${errMsg}` });
       dispatch({
         type: 'ADD_LOG_ENTRY',
         payload: {

@@ -132,9 +132,28 @@ function requireAuth(req, res, next) {
 
 // ── Routes ───────────────────────────────────────────────────────────────────
 
+/** Root welcome & status endpoint */
+app.get('/', (_req, res) => {
+  res.json({
+    ok: true,
+    service: 'Proxy Router Whitelist API',
+    engine: 'gost-v3-nftables',
+    endpoints: {
+      health: 'GET /health',
+      status: 'GET /api/status',
+      whitelist: 'GET, POST, DELETE /api/whitelist',
+    },
+  });
+});
+
 /** Health check */
 app.get('/health', (_req, res) => {
   res.json({ ok: true, engine: 'gost-v3-nftables', timestamp: new Date().toISOString() });
+});
+
+/** Friendly status endpoint */
+app.get('/api/status', (_req, res) => {
+  res.json({ ok: true, status: 'online', engine: 'gost-v3-nftables' });
 });
 
 /** Add IP to whitelist */

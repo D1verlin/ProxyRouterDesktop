@@ -103,16 +103,22 @@ export function useTauri() {
 
   const apiWhitelistRequest = useCallback(async (url, method = 'GET', token = '', ip = null) => {
     if (isTauri) {
-      const res = await invoke('api_whitelist_request', {
-        url,
-        method: method.toUpperCase(),
-        token: token || null,
-        ip: ip || null,
-      });
-      if (res && typeof res === 'object' && res.error) {
-        throw new Error(res.error);
+      try {
+        const res = await invoke('api_whitelist_request', {
+          url,
+          method: method.toUpperCase(),
+          token: token || null,
+          ip: ip || null,
+        });
+        if (res && typeof res === 'object' && res.error) {
+          throw new Error(res.error);
+        }
+        return res;
+      } catch (err) {
+        if (err instanceof Error) throw err;
+        const msg = typeof err === 'string' ? err : err?.message || JSON.stringify(err);
+        throw new Error(msg || 'API whitelist request failed');
       }
-      return res;
     }
 
     // Fallback for browser mode

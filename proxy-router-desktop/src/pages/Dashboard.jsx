@@ -118,7 +118,8 @@ export default function Dashboard() {
         type: 'ADD_LOG_ENTRY',
         payload: { category: 'AUTH', level: 'error', msg: `Whitelist API request failed: ${err.message}` },
       });
-      setErrorNotice(`${t('whitelist.statusError', 'Whitelist request failed')}: ${err.message}`);
+      const errMsg = err?.message || (typeof err === 'string' ? err : String(err));
+      setErrorNotice(`${t('whitelist.statusError', 'Whitelist request failed')}: ${errMsg}`);
       return false;
     } finally {
       dispatch({ type: 'SET_WHITELISTING', payload: false });

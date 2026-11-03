@@ -1336,8 +1336,19 @@ pub async fn api_whitelist_request(
     ip: Option<String>,
 ) -> Result<serde_json::Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
+        let target_url = url.trim();
+        if target_url.is_empty() || target_url.starts_with('/') || target_url.contains("your-server-ip") {
+            return Err("API URL is not configured. Please specify your server address in Settings (e.g. http://YOUR_SERVER_IP:1135)".to_string());
+        }
+
         let mut cmd = hidden_command("curl.exe");
-        cmd.args(["--silent", "--connect-timeout", "5", "--max-time", "8"]);
+        cmd.args([
+            "--silent",
+            "--show-error",
+            "--connect-timeout", "6",
+            "--max-time", "10",
+            "--noproxy", "*",
+        ]);
 
         let m = method.unwrap_or_else(|| "GET".to_string()).to_uppercase();
         cmd.args(["-X", &m]);
@@ -1357,20 +1368,33 @@ pub async fn api_whitelist_request(
             }
         }
 
-        cmd.arg(&url);
+        cmd.arg(target_url);
 
         let out = cmd.output().map_err(|e| format!("Failed to execute curl: {}", e))?;
         let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+
         if stdout.is_empty() {
             if out.status.success() {
                 return Ok(serde_json::json!({ "ok": true }));
             }
-            let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
-            return Err(if err.is_empty() { "Request failed with empty response".to_string() } else { err });
+            return Err(if !stderr.is_empty() {
+                format!("Connection error: {}", stderr)
+            } else {
+                format!("Server returned empty response (exit code {})", out.status.code().unwrap_or(-1))
+            });
         }
 
-        serde_json::from_str::<serde_json::Value>(&stdout)
-            .map_err(|_e| format!("Server returned invalid response: {}", stdout))
+        match serde_json::from_str::<serde_json::Value>(&stdout) {
+            Ok(json) => Ok(json),
+            Err(_) => {
+                if !out.status.success() {
+                    Err(format!("Request failed: {}", if !stderr.is_empty() { &stderr } else { &stdout }))
+                } else {
+                    Err(format!("Server returned invalid JSON response: {}", stdout))
+                }
+            }
+        }
     })
     .await
     .map_err(|e| format!("Task execution error: {}", e))?

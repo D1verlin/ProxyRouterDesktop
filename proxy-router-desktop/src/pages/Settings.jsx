@@ -309,12 +309,13 @@ export default function Settings() {
         });
       }
     } catch (err) {
+      const errMsg = err?.message || (typeof err === 'string' ? err : String(err));
       setTestResult({
         type: 'error',
         text:
           language === 'ru'
-            ? `Ошибка подключения к API: ${err.message}`
-            : `API connection failed: ${err.message}`,
+            ? `Ошибка подключения к API: ${errMsg}`
+            : `API connection failed: ${errMsg}`,
       });
     } finally {
       setTestingConnection(false);
