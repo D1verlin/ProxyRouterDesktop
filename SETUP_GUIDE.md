@@ -76,7 +76,7 @@ chmod +x install.sh
 1. Устанавливает бинарник **GOST v3** (`/usr/local/bin/gost`) с поддержкой HTTP, HTTPS (TLS) и SOCKS5.
 2. Генерирует самоподписанный TLS-сертификат для шифрованного HTTPS-прокси на порту `8443`.
 3. Развертывает скрипт ядра `/usr/local/bin/ip_manager.sh` для атомарного управления белым списком `nftables`.
-4. Запускает **Whitelist REST API** на порту `1135`, генерирует секретный Bearer-токен и сохраняет его в `/etc/gost/api_token.txt`.
+4. Запускает **Whitelist REST API** на порту `1135` и использует токены авторизации из `/opt/proxy-whitelist-api/tokens.json`.
 5. Настраивает и запускает systemd-службы с автозапуском:
    - `gost.service` (движок прокси)
    - `whitelist-api.service` (REST API для клиентов)
