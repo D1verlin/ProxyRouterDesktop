@@ -82,6 +82,31 @@ async function invoke(cmd, args = {}) {
     case 'window_toggle_maximize':
     case 'window_close':
       return null;
+    case 'get_proxy_mode':
+      return 'split';
+    case 'set_proxy_mode':
+      return args?.mode || 'split';
+    case 'get_traffic_stats':
+      return { total_rx_bytes: 0, total_tx_bytes: 0, active_connections: 0, recent_sessions: [] };
+    case 'check_service_health':
+      return {
+        id: args?.host || 'unknown',
+        name: args?.host || 'unknown',
+        host: args?.host || 'unknown',
+        ok: true,
+        latency_ms: Math.floor(Math.random() * 45) + 35,
+        error: null,
+      };
+    case 'check_services_health':
+      return [
+        { id: 'openai', name: 'OpenAI API', host: 'api.openai.com', ok: true, latency_ms: 120, error: null },
+        { id: 'anthropic', name: 'Anthropic Claude', host: 'api.anthropic.com', ok: true, latency_ms: 145, error: null },
+        { id: 'gemini', name: 'Google Gemini', host: 'generativelanguage.googleapis.com', ok: true, latency_ms: 85, error: null },
+        { id: 'copilot', name: 'GitHub Copilot', host: 'api.github.com', ok: true, latency_ms: 95, error: null },
+        { id: 'discord', name: 'Discord Gateway', host: 'gateway.discord.gg', ok: true, latency_ms: 70, error: null },
+        { id: 'perplexity', name: 'Perplexity AI', host: 'www.perplexity.ai', ok: true, latency_ms: 110, error: null },
+      ];
+      return null;
     default:
       return null;
   }
@@ -237,8 +262,8 @@ export function useTauri() {
     return invoke('set_autostart', { enabled: Boolean(enabled) });
   }, []);
 
-  const updateTrayIcon = useCallback(async (active) => {
-    return invoke('update_tray_icon', { active: Boolean(active) });
+  const updateTrayIcon = useCallback(async (active, iconId) => {
+    return invoke('update_tray_icon', { active: Boolean(active), iconId: iconId || null, icon_id: iconId || null });
   }, []);
 
   const appQuit = useCallback(async () => {
@@ -309,8 +334,28 @@ export function useTauri() {
     return invoke('restore_network_defaults');
   }, []);
 
-  const setAppIcon = useCallback(async (iconId) => {
-    return invoke('set_app_icon', { iconId, icon_id: iconId });
+  const setAppIcon = useCallback(async (iconId, active) => {
+    return invoke('set_app_icon', { iconId, icon_id: iconId, active: typeof active === 'boolean' ? active : null });
+  }, []);
+
+  const setProxyMode = useCallback(async (mode) => {
+    return invoke('set_proxy_mode', { mode });
+  }, []);
+
+  const getProxyMode = useCallback(async () => {
+    return invoke('get_proxy_mode');
+  }, []);
+
+  const getTrafficStats = useCallback(async () => {
+    return invoke('get_traffic_stats');
+  }, []);
+
+  const checkServicesHealth = useCallback(async () => {
+    return invoke('check_services_health');
+  }, []);
+
+  const checkServiceHealth = useCallback(async (host, port = 443) => {
+    return invoke('check_service_health', { host, port });
   }, []);
 
   const setWindowEffect = useCallback(async (effect, color = null) => {
@@ -347,6 +392,11 @@ export function useTauri() {
     testDnsLatency,
     restoreNetworkDefaults,
     setWindowEffect,
+    setProxyMode,
+    getProxyMode,
+    getTrafficStats,
+    checkServicesHealth,
+    checkServiceHealth,
     isTauri,
   };
 }

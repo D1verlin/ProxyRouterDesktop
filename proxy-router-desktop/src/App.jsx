@@ -22,6 +22,8 @@ import {
   getEffectiveProxyPort,
   getEffectiveProxyProtocol,
   getEffectiveIgnoreTls,
+  getEffectiveApiUrl,
+  getEffectiveAuthToken,
 } from './store/useAppStore';
 import { usePacServer } from './hooks/usePacServer';
 import { useTauri } from './hooks/useTauri';
@@ -54,19 +56,20 @@ function PacSync() {
 
 function TraySync() {
   const { state, dispatch } = useAppStore();
-  const { updateTrayIcon, setSystemProxy, clearSystemProxy, isTauri } = useTauri();
+  const { updateTrayIcon, setSystemProxy, clearSystemProxy, setProxyMode, getNativeIp, apiWhitelistRequest, isTauri } = useTauri();
+  const appIcon = state.customization?.appIcon || 'monolith';
 
   useEffect(() => {
-    updateTrayIcon(state.isActive).catch(() => {});
-  }, [state.isActive, updateTrayIcon]);
+    updateTrayIcon(state.isActive, appIcon).catch(() => {});
+  }, [state.isActive, state.proxyMode, appIcon, updateTrayIcon]);
 
   useEffect(() => {
     if (!isTauri) return;
-    let unlisten = null;
+    const cleanups = [];
     (async () => {
       try {
         const { listen } = await import('@tauri-apps/api/event');
-        unlisten = await listen('tray-toggle-proxy', async () => {
+        const unlistenToggle = await listen('tray-toggle-proxy', async () => {
           const nextActive = !state.isActive;
           try {
             if (nextActive) {
@@ -87,13 +90,52 @@ function TraySync() {
             console.error('[TraySync] Failed to toggle proxy from tray:', err);
           }
         });
+        cleanups.push(unlistenToggle);
+
+        const unlistenMode = await listen('tray-toggle-mode', async () => {
+          const nextMode = state.proxyMode === 'global' ? 'split' : 'global';
+          try {
+            await setProxyMode(nextMode);
+            dispatch({ type: 'SET_PROXY_MODE', payload: nextMode });
+            dispatch({
+              type: 'ADD_LOG_ENTRY',
+              payload: {
+                category: 'ROUTE',
+                level: 'info',
+                msg: `Proxy routing mode changed via system tray: ${nextMode.toUpperCase()}`,
+              },
+            });
+          } catch (err) {
+            console.error('[TraySync] Failed to toggle proxy mode:', err);
+          }
+        });
+        cleanups.push(unlistenMode);
+
+        const unlistenSync = await listen('tray-sync-ip', async () => {
+          try {
+            const ip = await getNativeIp();
+            dispatch({ type: 'SET_PUBLIC_IP', payload: ip });
+            const normalizedUrl = getEffectiveApiUrl(state.serverConfig);
+            const token = getEffectiveAuthToken(state.serverConfig);
+            if (ip && normalizedUrl && token) {
+              await apiWhitelistRequest(`${normalizedUrl}/api/whitelist`, 'POST', { ip }, token);
+              dispatch({
+                type: 'ADD_LOG_ENTRY',
+                payload: { category: 'AUTH', level: 'info', msg: `Public IP ${ip} authorized in server whitelist via system tray` },
+              });
+            }
+          } catch (err) {
+            console.error('[TraySync] Failed to sync IP from tray:', err);
+          }
+        });
+        cleanups.push(unlistenSync);
       } catch {}
     })();
 
     return () => {
-      if (typeof unlisten === 'function') unlisten();
+      cleanups.forEach((fn) => typeof fn === 'function' && fn());
     };
-  }, [state.isActive, state.terminalProxyActive, dispatch, setSystemProxy, clearSystemProxy, isTauri]);
+  }, [state.isActive, state.proxyMode, state.terminalProxyActive, state.serverConfig, dispatch, setSystemProxy, clearSystemProxy, setProxyMode, getNativeIp, apiWhitelistRequest, isTauri]);
 
   return null;
 }
@@ -111,7 +153,7 @@ function CustomizationSync() {
     const root = document.documentElement;
 
     root.setAttribute('data-app-icon', appIcon);
-    setAppIcon(appIcon).catch(() => {});
+    setAppIcon(appIcon, state.isActive).catch(() => {});
 
     const applyCurrentEffect = () => {
       if (theme === 'vela') {

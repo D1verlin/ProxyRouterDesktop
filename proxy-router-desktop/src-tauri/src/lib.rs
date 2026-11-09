@@ -9,7 +9,7 @@ use proxy::{
     reset_adapter_dns, restore_network_defaults, set_active_dns, set_autostart,
     set_system_proxy, set_terminal_env_proxy, start_embedded_pac_server,
     start_local_proxy_forwarder, test_dns_latency, test_upstream_proxy, update_pac_rules, update_tray_icon,
-    set_app_icon,
+    set_app_icon, set_proxy_mode, get_proxy_mode, get_traffic_stats, check_services_health, check_service_health,
     update_upstream_proxy, window_close, window_minimize, window_toggle_maximize,
     set_window_effect, sanitize_startup_proxy, win32_proxy,
     TRAY_INACTIVE_BYTES,
@@ -77,6 +77,12 @@ pub fn run() {
                                 "toggle_proxy" => {
                                     let _ = app.emit("tray-toggle-proxy", ());
                                 }
+                                "toggle_mode" => {
+                                    let _ = app.emit("tray-toggle-mode", ());
+                                }
+                                "sync_ip" => {
+                                    let _ = app.emit("tray-sync-ip", ());
+                                }
                                 "open_terminal" => {
                                     let _ = proxy::launch_proxied_terminal();
                                 }
@@ -131,6 +137,11 @@ pub fn run() {
             set_autostart,
             update_tray_icon,
             set_app_icon,
+            set_proxy_mode,
+            get_proxy_mode,
+            get_traffic_stats,
+            check_services_health,
+            check_service_health,
             get_network_adapters,
             set_active_dns,
             apply_adapter_dns,

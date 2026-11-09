@@ -26,6 +26,9 @@ import {
   Layers,
   Sparkles,
   Gem,
+  Globe,
+  Zap,
+  Terminal,
 } from 'lucide-react';
 import AnimatedSlider from '../components/AnimatedSlider';
 import {
@@ -43,7 +46,7 @@ import ClayIcon from '../components/ClayIcon';
 import { APP_ICONS } from '../assets/appIconsRegistry';
 import styles from './Settings.module.css';
 
-const CURRENT_VERSION = '1.0.23';
+const CURRENT_VERSION = '1.0.24';
 const GITHUB_REPO = 'D1verlin/ProxyRouterDesktop';
 const GITHUB_REPO_URL = 'https://github.com/D1verlin/ProxyRouterDesktop';
 const GITHUB_RELEASES_URL = 'https://github.com/D1verlin/ProxyRouterDesktop/releases';
@@ -73,7 +76,16 @@ export default function Settings() {
   const { state, dispatch, t } = useAppStore();
   const { serverConfig, language, autostart, terminalProxyActive, isActive, customization } = state;
   const isVela = customization?.theme === 'vela';
-  const { getAutostartStatus, setAutostart, setTerminalEnvProxy, apiWhitelistRequest, testUpstreamProxy, setAppIcon } = useTauri();
+  const {
+    getAutostartStatus,
+    setAutostart,
+    setTerminalEnvProxy,
+    apiWhitelistRequest,
+    testUpstreamProxy,
+    setAppIcon,
+    setProxyMode,
+    updateTrayIcon,
+  } = useTauri();
 
   const [form, setForm] = useState({ ...serverConfig });
   const [showToken, setShowToken] = useState(false);
@@ -106,6 +118,25 @@ export default function Settings() {
     message: '',
     checkedAt: null,
   });
+
+  const handleProxyModeChange = async (mode) => {
+    if (state.proxyMode === mode) return;
+    try {
+      await setProxyMode(mode);
+      dispatch({ type: 'SET_PROXY_MODE', payload: mode });
+      updateTrayIcon(state.isActive, state.customization?.appIcon).catch(() => {});
+      dispatch({
+        type: 'ADD_LOG_ENTRY',
+        payload: {
+          category: 'ROUTE',
+          level: 'info',
+          msg: `Routing mode switched to: ${mode === 'global' ? 'ALL TRAFFIC (GLOBAL)' : 'SPLIT TUNNELING (RULES)'}`,
+        },
+      });
+    } catch (err) {
+      console.error('[Settings] Failed to set proxy mode:', err);
+    }
+  };
 
   const handleToggleAutostart = async () => {
     const nextVal = !autostart;
@@ -538,6 +569,34 @@ export default function Settings() {
           <p className={styles.hint}>{t('settings.languageDesc', 'Choose your preferred language for the application.')}</p>
         </div>
 
+        {/* Traffic Routing Mode */}
+        <div className={styles.field}>
+          <label className={styles.label}>{t('settings.proxyModeLabel', 'Traffic Routing Mode')}</label>
+          <div className={styles.segmentedControl}>
+            <button
+              type="button"
+              className={`${styles.segmentBtn} ${state.proxyMode === 'split' ? styles.segmentBtnActive : ''}`}
+              onClick={() => handleProxyModeChange('split')}
+            >
+              <Globe size={14} style={{ marginRight: '6px', verticalAlign: '-2px' }} />
+              {t('dashboard.modeSplit', 'Split Tunneling')}
+            </button>
+            <button
+              type="button"
+              className={`${styles.segmentBtn} ${state.proxyMode === 'global' ? styles.segmentBtnActive : ''}`}
+              onClick={() => handleProxyModeChange('global')}
+            >
+              <Zap size={14} style={{ marginRight: '6px', verticalAlign: '-2px' }} />
+              {t('dashboard.modeGlobal', 'All Traffic (Global)')}
+            </button>
+          </div>
+          <p className={styles.hint}>
+            {state.proxyMode === 'global'
+              ? t('settings.modeGlobalDesc', 'Complete tunneling: all system applications and browser traffic route through the VPS proxy.')
+              : t('settings.modeSplitDesc', 'Split Tunneling: only enabled AI services and custom domain rules route through the proxy; other traffic connects directly.')}
+          </p>
+        </div>
+
         {/* Windows Autostart Toggle */}
         <div className={styles.toggleCard}>
           <div className={styles.toggleInfo}>
@@ -624,7 +683,7 @@ export default function Settings() {
               </div>
             </button>
           </div>
-          <p className={styles.hint}>{t('settings.themeDesc', 'Choose between Dark Monolith and the warm cream Vela design system.')}</p>
+          <p className={styles.hint}>{t('settings.themeDesc', 'Choose between Dark Monolith and warm cream Vela.')}</p>
         </div>
 
         {/* Background Mode & Sliders (Hidden for Vela Theme) */}
@@ -744,7 +803,7 @@ export default function Settings() {
                   className={`${styles.iconCard} ${isSelected ? styles.iconCardActive : ''}`}
                   onClick={() => {
                     dispatch({ type: 'SET_CUSTOMIZATION', payload: { appIcon: icon.id } });
-                    setAppIcon(icon.id).catch(() => {});
+                    setAppIcon(icon.id, state.isActive).catch(() => {});
                   }}
                   title={t(icon.descKey, icon.defaultDesc)}
                 >

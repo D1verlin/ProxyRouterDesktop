@@ -67,6 +67,7 @@ desktop.ini
 
 # AI agent local files
 .agent/
+brag-output/
 
 # Python cache
 __pycache__/

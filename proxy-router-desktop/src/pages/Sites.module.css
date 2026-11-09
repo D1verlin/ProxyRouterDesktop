@@ -181,6 +181,87 @@
   white-space: nowrap;
 }
 
+.rowControls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.checkBtn {
+  width: 88px;
+  min-width: 88px;
+  max-width: 88px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: var(--r-sm, 6px);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-sec);
+  font-size: 11px;
+  font-family: inherit;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.checkBtn:hover:not(:disabled) {
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.checkBtn_checking {
+  cursor: wait;
+  border-color: rgba(255, 255, 255, 0.15);
+  color: var(--text-sec);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.checkBtn_ok {
+  border-color: rgba(34, 197, 94, 0.3);
+  background: rgba(34, 197, 94, 0.08);
+  color: #22c55e;
+}
+
+.checkBtn_ok:hover {
+  border-color: rgba(34, 197, 94, 0.5);
+  background: rgba(34, 197, 94, 0.14);
+}
+
+.checkBtn_error {
+  border-color: rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.08);
+  color: #ef4444;
+}
+
+.checkBtn_error:hover {
+  border-color: rgba(239, 68, 68, 0.5);
+  background: rgba(239, 68, 68, 0.14);
+}
+
+.spin {
+  animation: spinAnim 0.9s linear infinite;
+}
+
+@keyframes spinAnim {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* Toggle switch */
 .toggle {
   width: 36px;
@@ -296,6 +377,115 @@
   -webkit-backdrop-filter: blur(16px) saturate(130%) !important;
   border: 1.2px solid rgba(13, 13, 12, 0.09) !important;
   box-shadow: 0 4px 20px rgba(13, 13, 12, 0.02) !important;
+}
+
+.smartSuggest {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  border-radius: var(--r-md);
+  margin-top: 10px;
+  gap: 12px;
+  animation: fadeIn 0.15s ease;
+}
+
+.suggestTextGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-primary);
+  overflow: hidden;
+}
+
+.suggestIcon {
+  color: #10B981;
+  flex-shrink: 0;
+}
+
+.suggestDomains {
+  font-family: var(--font-mono, monospace);
+  color: #10B981;
+  font-weight: 500;
+}
+
+.suggestBtn {
+  background: #10B981;
+  color: #FFFFFF;
+  border: none;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+
+.suggestBtn:hover {
+  opacity: 0.9;
+}
+
+.batchToggleBtn {
+  background: transparent;
+  border: 1px dashed var(--border);
+  color: var(--text-sec);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s;
+}
+
+.batchToggleBtn:hover {
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+}
+
+.batchActive {
+  border-color: #10B981;
+  color: #10B981;
+  background: rgba(16, 185, 129, 0.06);
+}
+
+.batchArea {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.batchTextarea {
+  width: 100%;
+  box-sizing: border-box;
+  height: 90px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  resize: vertical;
+}
+
+.batchTextarea:focus {
+  outline: none;
+  border-color: var(--border-hover);
+}
+
+.batchActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 :global([data-theme="vela"]) .siteRow:hover,

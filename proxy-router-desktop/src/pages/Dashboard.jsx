@@ -35,7 +35,7 @@ export default function Dashboard() {
     terminalProxyActive,
   } = state;
 
-  const { setSystemProxy, clearSystemProxy, getNativeIp, apiWhitelistRequest } = useTauri();
+  const { setSystemProxy, clearSystemProxy, getNativeIp, apiWhitelistRequest, updateTrayIcon } = useTauri();
   const { pacUrl, checkHealth, updateConfig } = usePacServer();
   const [errorNotice, setErrorNotice] = useState(null);
   const [isConnecting, setIsConnecting] = useState(false);

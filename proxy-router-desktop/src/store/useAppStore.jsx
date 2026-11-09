@@ -271,6 +271,7 @@ const initialState = {
 
   /** Terminal & Dev tools proxy status */
   terminalProxyActive: true,
+  proxyMode: 'split',
 
   /** Server configuration */
   serverConfig: {
@@ -307,6 +308,9 @@ function reducer(state, action) {
       return { ...state, isHydrated: Boolean(action.payload) };
 
     case 'SET_ACTIVE':
+      return { ...state, isActive: action.payload };
+    case 'SET_PROXY_MODE':
+      return { ...state, proxyMode: action.payload };
       return { ...state, isActive: action.payload };
 
     case 'SET_PUBLIC_IP':

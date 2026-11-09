@@ -2,7 +2,7 @@
   padding: 32px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 16px;
   height: 100%;
   overflow-y: auto;
   box-sizing: border-box;
@@ -32,6 +32,52 @@
   gap: 8px;
 }
 
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: var(--r-sm, 6px);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-sec);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--t, 0.15s ease);
+}
+
+.tab:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.tabActive {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--border);
+}
+
+.livePill {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  letter-spacing: 0.05em;
+}
+
+/* Filter bar */
 .filterBar {
   display: flex;
   align-items: center;
@@ -84,6 +130,7 @@
   color: #ffffff;
 }
 
+/* Event log feed */
 .feed {
   background: var(--bg-surface-2);
   border: 1px solid var(--border);
@@ -93,6 +140,7 @@
   flex-direction: column;
   overflow-y: auto;
   flex: 1;
+  min-height: 220px;
 }
 
 .row {
@@ -172,7 +220,195 @@
   background: var(--bg-surface-2);
 }
 
-/* в”Ђв”Ђв”Ђ Vela Theme Light & Contrast Overrides в”Ђв”Ђв”Ђ */
+/* ── Network Activity Tab ─────────────────────────── */
+.networkView {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  flex: 1;
+}
+
+.metricsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.metricCard {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md, 8px);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: border-color 0.15s ease;
+}
+
+.metricCard:hover {
+  border-color: var(--border-hover);
+}
+
+.metricLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-sec);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.metricVal {
+  font-size: 18px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+.valDown {
+  color: #22c55e;
+}
+
+.valUp {
+  color: #3b82f6;
+}
+
+/* Sessions Container */
+.sessionsContainer {
+  background: rgba(255, 255, 255, 0.02);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md, 8px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex: 1;
+  min-height: 260px;
+}
+
+.sessionsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.sessionsTitleLine {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sessionsTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.sessionSearchBox {
+  position: relative;
+}
+
+.emptySessions {
+  padding: 40px 16px;
+  text-align: center;
+  color: var(--text-sec);
+  font-size: 12px;
+}
+
+.sessionsTable {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.tableHeader {
+  display: grid;
+  grid-template-columns: 2fr 100px 120px 100px;
+  padding: 8px 16px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-sec);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.tableBody {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.sessionRow {
+  display: grid;
+  grid-template-columns: 2fr 100px 120px 100px;
+  align-items: center;
+  padding: 8px 16px;
+  font-size: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+  transition: background 0.15s ease;
+}
+
+.sessionRow:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.colHost {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hostText {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.colRoute {
+  display: flex;
+  align-items: center;
+}
+
+.routeBadge {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+.badgeProxied {
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  color: #22c55e;
+}
+
+.badgeDirect {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  color: var(--text-sec);
+}
+
+.colBytes {
+  color: var(--text-sec);
+  font-size: 11px;
+}
+
+.colTime {
+  color: var(--text-sec);
+  font-size: 11px;
+}
+
+/* ── Vela Theme Overrides ─────────────────────────── */
 :global([data-theme="vela"]) .title {
   color: #0D0D0C !important;
   font-size: 20px !important;
@@ -185,12 +421,20 @@
 }
 
 :global([data-theme="vela"]) .feed,
-:global([data-theme="vela"]) .empty {
-  background: rgba(255, 255, 255, 0.52) !important;
+:global([data-theme="vela"]) .empty,
+:global([data-theme="vela"]) .metricCard,
+:global([data-theme="vela"]) .sessionsContainer {
+  background: rgba(255, 255, 255, 0.55) !important;
   backdrop-filter: blur(16px) saturate(130%) !important;
   -webkit-backdrop-filter: blur(16px) saturate(130%) !important;
   border: 1.2px solid rgba(13, 13, 12, 0.09) !important;
   box-shadow: 0 4px 20px rgba(13, 13, 12, 0.02) !important;
+}
+
+:global([data-theme="vela"]) .tabActive {
+  background: rgba(13, 13, 12, 0.08) !important;
+  color: #0D0D0C !important;
+  border-color: rgba(13, 13, 12, 0.15) !important;
 }
 
 :global([data-theme="vela"]) .catPill {
@@ -208,10 +452,22 @@
   font-weight: 600;
 }
 
-:global([data-theme="vela"]) .row {
+:global([data-theme="vela"]) .row,
+:global([data-theme="vela"]) .sessionRow {
   border-bottom: 1px solid rgba(13, 13, 12, 0.05) !important;
 }
 
-:global([data-theme="vela"]) .row:hover {
+:global([data-theme="vela"]) .row:hover,
+:global([data-theme="vela"]) .sessionRow:hover {
   background: rgba(13, 13, 12, 0.03) !important;
+}
+
+:global([data-theme="vela"]) .metricVal {
+  color: #0D0D0C !important;
+}
+
+:global([data-theme="vela"]) .sessionsHeader,
+:global([data-theme="vela"]) .tableHeader {
+  background: rgba(13, 13, 12, 0.02) !important;
+  border-bottom: 1px solid rgba(13, 13, 12, 0.06) !important;
 }

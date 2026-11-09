@@ -1,16 +1,18 @@
 // Tauri Rust backend — system proxy, app router, & embedded PAC server
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener, TcpStream, ToSocketAddrs, UdpSocket};
 use std::process::Command;
-use std::sync::{Arc, RwLock};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicU8, Ordering};
+use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::{command, AppHandle, Manager, Window};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
@@ -62,7 +64,79 @@ static UPSTREAM_PROXY: RwLock<(String, u16, UpstreamProtocol, bool)> =
     RwLock::new((String::new(), 3128, UpstreamProtocol::Http, true));
 
 // Global proxy master switch state
-pub static PROXY_ACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub static PROXY_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+// Global proxy mode: 0 = Split Tunneling (selective rules), 1 = Global Mode (all external traffic)
+pub static PROXY_MODE: AtomicU8 = AtomicU8::new(0);
+
+// Global live telemetry metrics
+pub static TOTAL_RX_BYTES: AtomicU64 = AtomicU64::new(0);
+pub static TOTAL_TX_BYTES: AtomicU64 = AtomicU64::new(0);
+pub static ACTIVE_CONNECTIONS: AtomicU32 = AtomicU32::new(0);
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct SessionRecord {
+    pub host: String,
+    pub proxied: bool,
+    pub bytes: u64,
+    pub timestamp: u64,
+}
+
+static RECENT_SESSIONS: Mutex<Option<VecDeque<SessionRecord>>> = Mutex::new(None);
+
+pub fn record_session(target: &str, proxied: bool, bytes: u64) {
+    let host = target
+        .trim_start_matches("http://")
+        .trim_start_matches("https://")
+        .split('/')
+        .next()
+        .unwrap_or(target)
+        .split(':')
+        .next()
+        .unwrap_or(target)
+        .to_string();
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    if let Ok(mut lock) = RECENT_SESSIONS.lock() {
+        let deque = lock.get_or_insert_with(|| VecDeque::with_capacity(35));
+        deque.push_front(SessionRecord {
+            host,
+            proxied,
+            bytes,
+            timestamp: now,
+        });
+        if deque.len() > 30 {
+            deque.pop_back();
+        }
+    }
+}
+
+pub fn update_session_bytes(host: &str, additional_bytes: u64) {
+    let clean_host = host
+        .trim_start_matches("http://")
+        .trim_start_matches("https://")
+        .split('/')
+        .next()
+        .unwrap_or(host)
+        .split(':')
+        .next()
+        .unwrap_or(host);
+
+    if let Ok(mut lock) = RECENT_SESSIONS.lock() {
+        if let Some(ref mut deque) = *lock {
+            for session in deque.iter_mut() {
+                if session.host == clean_host {
+                    session.bytes += additional_bytes;
+                    break;
+                }
+            }
+        }
+    }
+}
 
 // Global in-memory list of routed domains for selective forwarder filtering
 static ROUTED_DOMAINS: RwLock<Vec<String>> = RwLock::new(Vec::new());
@@ -262,6 +336,11 @@ pub fn should_proxy_host(target: &str) -> bool {
         return false;
     }
 
+    // In Global Mode (1), route all external destinations through the upstream proxy
+    if PROXY_MODE.load(Ordering::Relaxed) == 1 {
+        return true;
+    }
+
     // Core AI and developer ecosystem domains that MUST ALWAYS route through VPS proxy
     const CORE_AI_DOMAINS: &[&str] = &[
         "googleapis.com",
@@ -339,7 +418,9 @@ fn generate_pac_script(proxy_host: &str, proxy_port: u16, protocol: UpstreamProt
         ));
     }
 
-    let match_block = if conditions.is_empty() {
+    let match_block = if PROXY_MODE.load(Ordering::Relaxed) == 1 {
+        "  // Global Mode: all external traffic routed through proxy\n  return proxy;".to_string()
+    } else if conditions.is_empty() {
         "  // No routed domains configured".to_string()
     } else {
         format!("  if (\n{}\n  ) {{\n    return proxy;\n  }}", conditions.join(" ||\n"))
@@ -587,8 +668,7 @@ fn forward_https_upstream(
     ignore_tls_err: bool,
 ) {
     tauri::async_runtime::spawn(async move {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
+        
         let upstream_addr_str = format!("{}:{}", upstream_host, upstream_port);
         let upstream_tcp = match tokio::net::TcpStream::connect(&upstream_addr_str).await {
             Ok(s) => s,
@@ -675,37 +755,41 @@ fn forward_https_upstream(
             }
         }
 
-        let _ = tokio::io::copy_bidirectional(&mut async_client, &mut tls_stream).await;
+        record_session(&target, true, client_leftover.len() as u64);
+        ACTIVE_CONNECTIONS.fetch_add(1, Ordering::Relaxed);
+        let res = tokio::io::copy_bidirectional(&mut async_client, &mut tls_stream).await;
+        ACTIVE_CONNECTIONS.fetch_sub(1, Ordering::Relaxed);
+        if let Ok((tx, rx)) = res {
+            TOTAL_TX_BYTES.fetch_add(tx, Ordering::Relaxed);
+            TOTAL_RX_BYTES.fetch_add(rx, Ordering::Relaxed);
+            update_session_bytes(&target, tx + rx);
+        }
     });
 }
 
 /// Starts embedded local HTTP CONNECT proxy forwarder on 127.0.0.1:8183
 pub fn start_local_proxy_forwarder() {
     thread::spawn(|| {
-        let listener = match TcpListener::bind("127.0.0.1:8183") {
-            Ok(l) => {
-                println!("[local-forwarder] Native Proxy Forwarder listening on http://127.0.0.1:8183");
-                l
+        let mut listener = None;
+        for attempt in 0..10 {
+            match TcpListener::bind("127.0.0.1:8183") {
+                Ok(l) => {
+                    println!("[local-forwarder] Native Proxy Forwarder listening on http://127.0.0.1:8183");
+                    listener = Some(l);
+                    break;
+                }
+                Err(e) => {
+                    println!("[local-forwarder] Bind attempt {} on 127.0.0.1:8183: {}; retrying in 300ms...", attempt + 1, e);
+                    thread::sleep(Duration::from_millis(300));
+                }
             }
-            Err(e) => {
-                #[cfg(debug_assertions)]
-                {
-                    match TcpListener::bind("127.0.0.1:18183") {
-                        Ok(l) => {
-                            println!("[local-forwarder] Dev forwarder listening on http://127.0.0.1:18183");
-                            l
-                        }
-                        Err(_) => {
-                            println!("[local-forwarder] Port 8183 in use by primary running instance; using primary forwarder ({})", e);
-                            return;
-                        }
-                    }
-                }
-                #[cfg(not(debug_assertions))]
-                {
-                    eprintln!("[local-forwarder] Could not bind to 127.0.0.1:8183: {}", e);
-                    return;
-                }
+        }
+
+        let listener = match listener {
+            Some(l) => l,
+            None => {
+                eprintln!("[local-forwarder] CRITICAL: Failed to bind 127.0.0.1:8183 after 10 attempts!");
+                return;
             }
         };
 
@@ -815,24 +899,23 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
                     return Ok(());
                 }
 
-                let mut upstream_reader = BufReader::new(upstream.try_clone()?);
-                let mut resp_line = String::new();
-                if upstream_reader.read_line(&mut resp_line).is_err() || !resp_line.contains("200") {
-                    let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
-                    return Ok(());
-                }
-
-                loop {
-                    let mut line = String::new();
-                    if upstream_reader.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" || line == "\n" {
+                // Read until \r\n\r\n byte-by-byte so no TLS bytes from target are buffered away
+                let mut resp_header = Vec::new();
+                let mut byte = [0u8; 1];
+                while resp_header.len() < 4096 {
+                    if upstream.read_exact(&mut byte).is_err() {
+                        break;
+                    }
+                    resp_header.push(byte[0]);
+                    if resp_header.ends_with(b"\r\n\r\n") || resp_header.ends_with(b"\n\n") {
                         break;
                     }
                 }
-
-                // Flush any excess bytes that were buffered inside upstream_reader
-                let upstream_leftover = upstream_reader.buffer().to_vec();
-                if !upstream_leftover.is_empty() {
-                    let _ = client.write_all(&upstream_leftover);
+                let resp_str = String::from_utf8_lossy(&resp_header);
+                if !resp_str.contains("200") {
+                    eprintln!("[local-forwarder] Upstream proxy returned non-200: {}", resp_str.lines().next().unwrap_or(""));
+                    let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
+                    return Ok(());
                 }
             }
 
@@ -842,7 +925,7 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
             let addrs = resolve_target_addresses(target);
             let mut direct_stream = None;
             for addr in addrs {
-                if let Ok(s) = TcpStream::connect_timeout(&addr, Duration::from_secs(8)) {
+                if let Ok(s) = TcpStream::connect_timeout(&addr, Duration::from_secs(6)) {
                     direct_stream = Some(s);
                     break;
                 }
@@ -870,19 +953,29 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
             let _ = target_clone.write_all(&client_leftover);
         }
 
+        record_session(target, should_proxy, client_leftover.len() as u64);
+        ACTIVE_CONNECTIONS.fetch_add(1, Ordering::Relaxed);
+
         let mut client_read = client.try_clone()?;
         let mut client_write = client.try_clone()?;
         let mut target_read = target_stream.try_clone()?;
         let mut target_write = target_stream;
 
+        let host_t1 = target.to_string();
         let t1 = thread::spawn(move || {
-            let _ = std::io::copy(&mut client_read, &mut target_write);
+            let tx = std::io::copy(&mut client_read, &mut target_write).unwrap_or(0);
             let _ = target_write.shutdown(std::net::Shutdown::Write);
+            TOTAL_TX_BYTES.fetch_add(tx, Ordering::Relaxed);
+            update_session_bytes(&host_t1, tx);
+            tx
         });
 
-        let _ = std::io::copy(&mut target_read, &mut client_write);
+        let rx = std::io::copy(&mut target_read, &mut client_write).unwrap_or(0);
         let _ = client_write.shutdown(std::net::Shutdown::Write);
+        TOTAL_RX_BYTES.fetch_add(rx, Ordering::Relaxed);
+        update_session_bytes(target, rx);
         let _ = t1.join();
+        ACTIVE_CONNECTIONS.fetch_sub(1, Ordering::Relaxed);
     } else {
         // Plain HTTP forwarding
         let mut target_stream = if should_proxy {
@@ -925,7 +1018,7 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
             let addrs = resolve_target_addresses(&addr_str);
             let mut direct_stream = None;
             for a in addrs {
-                if let Ok(s) = TcpStream::connect_timeout(&a, Duration::from_secs(8)) {
+                if let Ok(s) = TcpStream::connect_timeout(&a, Duration::from_secs(6)) {
                     direct_stream = Some(s);
                     break;
                 }
@@ -940,7 +1033,7 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
         };
 
         let formatted_request_line = if should_proxy && upstream_proto != UpstreamProtocol::Socks5 {
-            request_line
+            request_line.clone()
         } else {
             let relative_path = if let Some(idx) = target.find("://") {
                 let after_scheme = &target[idx + 3..];
@@ -976,19 +1069,29 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
             let _ = target_stream.write_all(&client_leftover);
         }
 
+        record_session(target, should_proxy, client_leftover.len() as u64);
+        ACTIVE_CONNECTIONS.fetch_add(1, Ordering::Relaxed);
+
         let mut client_read = client.try_clone()?;
         let mut client_write = client.try_clone()?;
         let mut target_read = target_stream.try_clone()?;
         let mut target_write = target_stream;
 
+        let host_t1 = target.to_string();
         let t1 = thread::spawn(move || {
-            let _ = std::io::copy(&mut client_read, &mut target_write);
+            let tx = std::io::copy(&mut client_read, &mut target_write).unwrap_or(0);
             let _ = target_write.shutdown(std::net::Shutdown::Write);
+            TOTAL_TX_BYTES.fetch_add(tx, Ordering::Relaxed);
+            update_session_bytes(&host_t1, tx);
+            tx
         });
 
-        let _ = std::io::copy(&mut target_read, &mut client_write);
+        let rx = std::io::copy(&mut target_read, &mut client_write).unwrap_or(0);
         let _ = client_write.shutdown(std::net::Shutdown::Write);
+        TOTAL_RX_BYTES.fetch_add(rx, Ordering::Relaxed);
+        update_session_bytes(target, rx);
         let _ = t1.join();
+        ACTIVE_CONNECTIONS.fetch_sub(1, Ordering::Relaxed);
     }
 
     Ok(())
@@ -1154,6 +1257,179 @@ pub fn update_pac_rules(
     } else {
         Err("Failed to acquire write lock".to_string())
     }
+}
+
+#[command]
+pub fn set_proxy_mode(mode: String) -> Result<String, String> {
+    let mode_val = if mode.eq_ignore_ascii_case("global") { 1 } else { 0 };
+    PROXY_MODE.store(mode_val, Ordering::SeqCst);
+    let (host, port, proto) = {
+        let lock = UPSTREAM_PROXY.read().unwrap();
+        (lock.0.clone(), lock.1, lock.2)
+    };
+    let hosts = {
+        let lock = ROUTED_DOMAINS.read().unwrap();
+        lock.clone()
+    };
+    let pac = generate_pac_script(&host, port, proto, &hosts);
+    if let Ok(mut lock) = PAC_CONTENT.write() {
+        *lock = Some(Arc::new(pac));
+    }
+    Ok(if mode_val == 1 { "global".to_string() } else { "split".to_string() })
+}
+
+#[command]
+pub fn get_proxy_mode() -> Result<String, String> {
+    let val = PROXY_MODE.load(Ordering::SeqCst);
+    Ok(if val == 1 { "global".to_string() } else { "split".to_string() })
+}
+
+#[command]
+pub fn get_traffic_stats() -> Result<serde_json::Value, String> {
+    let rx = TOTAL_RX_BYTES.load(Ordering::Relaxed);
+    let tx = TOTAL_TX_BYTES.load(Ordering::Relaxed);
+    let active = ACTIVE_CONNECTIONS.load(Ordering::Relaxed);
+
+    let sessions = if let Ok(lock) = RECENT_SESSIONS.lock() {
+        lock.as_ref().map(|d| d.iter().cloned().collect::<Vec<_>>()).unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+
+    Ok(serde_json::json!({
+        "total_rx_bytes": rx,
+        "total_tx_bytes": tx,
+        "active_connections": active,
+        "recent_sessions": sessions,
+    }))
+}
+
+#[derive(Serialize)]
+pub struct ServiceHealth {
+    pub id: String,
+    pub name: String,
+    pub host: String,
+    pub ok: bool,
+    pub latency_ms: u64,
+    pub error: Option<String>,
+}
+
+#[command]
+pub async fn check_service_health(host: String, port: Option<u16>) -> Result<ServiceHealth, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let p = port.unwrap_or(443);
+        let start = Instant::now();
+        let forwarder_addr = "127.0.0.1:8183";
+        let mut ok = false;
+        let mut err_msg = None;
+
+        if let Ok(mut stream) = TcpStream::connect_timeout(
+            &forwarder_addr.parse().unwrap(),
+            Duration::from_millis(4500),
+        ) {
+            let _ = stream.set_read_timeout(Some(Duration::from_millis(4500)));
+            let _ = stream.set_write_timeout(Some(Duration::from_millis(4500)));
+            let req = format!("CONNECT {}:{} HTTP/1.1\r\nHost: {}:{}\r\n\r\n", host, p, host, p);
+            if stream.write_all(req.as_bytes()).is_ok() {
+                let mut resp = [0u8; 128];
+                if let Ok(n) = stream.read(&mut resp) {
+                    let resp_str = String::from_utf8_lossy(&resp[..n]);
+                    if resp_str.starts_with("HTTP/1.1 200") || resp_str.starts_with("HTTP/1.0 200") {
+                        ok = true;
+                    } else {
+                        err_msg = Some(resp_str.lines().next().unwrap_or("Non-200 response").to_string());
+                    }
+                } else {
+                    err_msg = Some("Timeout".to_string());
+                }
+            } else {
+                err_msg = Some("Write failed".to_string());
+            }
+        } else {
+            err_msg = Some("Forwarder unreachable".to_string());
+        }
+
+        let elapsed = start.elapsed().as_millis() as u64;
+        Ok(ServiceHealth {
+            id: host.clone(),
+            name: host.clone(),
+            host,
+            ok,
+            latency_ms: if ok { elapsed } else { 0 },
+            error: err_msg,
+        })
+    })
+    .await
+    .map_err(|e| format!("Task execution error: {}", e))?
+}
+
+#[command]
+pub async fn check_services_health() -> Result<Vec<ServiceHealth>, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let targets = vec![
+            ("openai", "OpenAI API", "api.openai.com", 443),
+            ("anthropic", "Anthropic Claude", "api.anthropic.com", 443),
+            ("gemini", "Google Gemini", "generativelanguage.googleapis.com", 443),
+            ("copilot", "GitHub Copilot", "api.github.com", 443),
+            ("discord", "Discord Gateway", "gateway.discord.gg", 443),
+            ("perplexity", "Perplexity AI", "www.perplexity.ai", 443),
+        ];
+
+        let handles: Vec<_> = targets.into_iter().map(|(id, name, host, port)| {
+            thread::spawn(move || {
+                let start = Instant::now();
+                let forwarder_addr = "127.0.0.1:8183";
+                let mut ok = false;
+                let mut err_msg = None;
+
+                if let Ok(mut stream) = TcpStream::connect_timeout(
+                    &forwarder_addr.parse().unwrap(),
+                    Duration::from_millis(3500),
+                ) {
+                    let _ = stream.set_read_timeout(Some(Duration::from_millis(3500)));
+                    let _ = stream.set_write_timeout(Some(Duration::from_millis(3500)));
+                    let req = format!("CONNECT {}:{} HTTP/1.1\r\nHost: {}:{}\r\n\r\n", host, port, host, port);
+                    if stream.write_all(req.as_bytes()).is_ok() {
+                        let mut resp = [0u8; 128];
+                        if let Ok(n) = stream.read(&mut resp) {
+                            let resp_str = String::from_utf8_lossy(&resp[..n]);
+                            if resp_str.starts_with("HTTP/1.1 200") || resp_str.starts_with("HTTP/1.0 200") {
+                                ok = true;
+                            } else {
+                                err_msg = Some(resp_str.lines().next().unwrap_or("Non-200 response").to_string());
+                            }
+                        } else {
+                            err_msg = Some("Read timeout".to_string());
+                        }
+                    } else {
+                        err_msg = Some("Write failed".to_string());
+                    }
+                } else {
+                    err_msg = Some("Cannot reach forwarder".to_string());
+                }
+
+                let elapsed = start.elapsed().as_millis() as u64;
+                ServiceHealth {
+                    id: id.to_string(),
+                    name: name.to_string(),
+                    host: host.to_string(),
+                    ok,
+                    latency_ms: if ok { elapsed } else { 0 },
+                    error: err_msg,
+                }
+            })
+        }).collect();
+
+        let mut results = Vec::new();
+        for h in handles {
+            if let Ok(res) = h.join() {
+                results.push(res);
+            }
+        }
+        Ok(results)
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))?
 }
 
 /// Sets the system proxy to local forwarder on 127.0.0.1:8183 and optionally sets HTTP_PROXY / HTTPS_PROXY
@@ -2195,8 +2471,32 @@ Add-Type -TypeDefinition $wininetCode -ErrorAction SilentlyContinue
 
 // ── Autostart & Dynamic Tray Icon Commands ─────────────────────────────────
 
-pub const TRAY_ACTIVE_BYTES: &[u8] = include_bytes!("../icons/tray-active.png");
-pub const TRAY_INACTIVE_BYTES: &[u8] = include_bytes!("../icons/tray-inactive.png");
+pub const TRAY_ACTIVE_BYTES: &[u8] = include_bytes!("../icons/variants/monolith-tray-active.png");
+pub const TRAY_INACTIVE_BYTES: &[u8] = include_bytes!("../icons/variants/monolith-tray-inactive.png");
+
+static CURRENT_APP_ICON: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+static CURRENT_PROXY_ACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn get_tray_icon_bytes(icon_id: &str, active: bool) -> &'static [u8] {
+    match (icon_id, active) {
+        ("vela-cream", true) => include_bytes!("../icons/variants/vela-cream-tray-active.png"),
+        ("vela-cream", false) => include_bytes!("../icons/variants/vela-cream-tray-inactive.png"),
+        ("vela-amber", true) => include_bytes!("../icons/variants/vela-amber-tray-active.png"),
+        ("vela-amber", false) => include_bytes!("../icons/variants/vela-amber-tray-inactive.png"),
+        ("sunset-peach", true) => include_bytes!("../icons/variants/sunset-peach-tray-active.png"),
+        ("sunset-peach", false) => include_bytes!("../icons/variants/sunset-peach-tray-inactive.png"),
+        ("lilac-lavender", true) => include_bytes!("../icons/variants/lilac-lavender-tray-active.png"),
+        ("lilac-lavender", false) => include_bytes!("../icons/variants/lilac-lavender-tray-inactive.png"),
+        ("cyber-emerald", true) => include_bytes!("../icons/variants/cyber-emerald-tray-active.png"),
+        ("cyber-emerald", false) => include_bytes!("../icons/variants/cyber-emerald-tray-inactive.png"),
+        ("midnight-white", true) => include_bytes!("../icons/variants/midnight-white-tray-active.png"),
+        ("midnight-white", false) => include_bytes!("../icons/variants/midnight-white-tray-inactive.png"),
+        ("monolith", true) => include_bytes!("../icons/variants/monolith-tray-active.png"),
+        ("monolith", false) => include_bytes!("../icons/variants/monolith-tray-inactive.png"),
+        (_, true) => TRAY_ACTIVE_BYTES,
+        (_, false) => TRAY_INACTIVE_BYTES,
+    }
+}
 
 const AUTOSTART_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
 const AUTOSTART_NAME: &str = "ProxyRouterDesktop";
@@ -2239,20 +2539,29 @@ pub fn build_tray_menu<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     active: bool,
 ) -> Result<Menu<R>, tauri::Error> {
+    let mode_val = PROXY_MODE.load(Ordering::SeqCst);
+    let mode_str = if mode_val == 1 { "Global" } else { "Split" };
     let status_text = if active {
-        "Proxy Router: Active"
+        format!("Proxy Router: Active ({})", mode_str)
     } else {
-        "Proxy Router: Disconnected"
+        "Proxy Router: Disconnected".to_string()
     };
     let toggle_text = if active {
         "Disable Proxy"
     } else {
         "Enable Proxy"
     };
+    let mode_text = if mode_val == 1 {
+        "Switch Mode: Split Tunneling (Rules)"
+    } else {
+        "Switch Mode: All Traffic (Global)"
+    };
 
     let status_header = MenuItem::with_id(app, "status_info", status_text, false, None::<&str>)?;
     let sep1 = PredefinedMenuItem::separator(app)?;
     let toggle_proxy_item = MenuItem::with_id(app, "toggle_proxy", toggle_text, true, None::<&str>)?;
+    let toggle_mode_item = MenuItem::with_id(app, "toggle_mode", mode_text, true, None::<&str>)?;
+    let sync_ip_item = MenuItem::with_id(app, "sync_ip", "Sync IP with Whitelist", true, None::<&str>)?;
     let terminal_item = MenuItem::with_id(app, "open_terminal", "Open Proxied Terminal", true, None::<&str>)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
     let show_window_item = MenuItem::with_id(app, "show_window", "Show Proxy Router", true, None::<&str>)?;
@@ -2266,6 +2575,8 @@ pub fn build_tray_menu<R: tauri::Runtime>(
             &status_header,
             &sep1,
             &toggle_proxy_item,
+            &toggle_mode_item,
+            &sync_ip_item,
             &terminal_item,
             &sep2,
             &show_window_item,
@@ -2277,19 +2588,40 @@ pub fn build_tray_menu<R: tauri::Runtime>(
 }
 
 #[command]
-pub fn update_tray_icon(app: AppHandle, active: bool) -> Result<(), String> {
+pub fn update_tray_icon(
+    app: AppHandle,
+    active: bool,
+    icon_id: Option<String>,
+) -> Result<(), String> {
+    CURRENT_PROXY_ACTIVE.store(active, std::sync::atomic::Ordering::SeqCst);
+    if let Some(id) = icon_id {
+        if !id.is_empty() {
+            if let Ok(mut lock) = CURRENT_APP_ICON.lock() {
+                *lock = Some(id);
+            }
+        }
+    }
+
+    let active_icon_id = CURRENT_APP_ICON
+        .lock()
+        .ok()
+        .and_then(|lock| lock.clone())
+        .unwrap_or_else(|| "monolith".to_string());
+
     let tray = app.tray_by_id("main_tray").or_else(|| app.tray_by_id("main_tray_dev"));
     if let Some(tray) = tray {
-        let img_bytes = if active { TRAY_ACTIVE_BYTES } else { TRAY_INACTIVE_BYTES };
+        let img_bytes = get_tray_icon_bytes(&active_icon_id, active);
         if let Ok(icon) = Image::from_bytes(img_bytes) {
             let _ = tray.set_icon(Some(icon));
         }
+        let mode_val = PROXY_MODE.load(Ordering::SeqCst);
+        let mode_str = if mode_val == 1 { "Global" } else { "Split" };
         let tooltip = if active {
-            "Proxy Router: Active (Connected)"
+            format!("Proxy Router: Active ({})", mode_str)
         } else {
-            "Proxy Router: Disconnected"
+            "Proxy Router: Disconnected".to_string()
         };
-        let _ = tray.set_tooltip(Some(tooltip));
+        let _ = tray.set_tooltip(Some(&tooltip));
 
         if let Ok(menu) = build_tray_menu(&app, active) {
             let _ = tray.set_menu(Some(menu));
@@ -2299,7 +2631,19 @@ pub fn update_tray_icon(app: AppHandle, active: bool) -> Result<(), String> {
 }
 
 #[command]
-pub fn set_app_icon(app: AppHandle, icon_id: String) -> Result<(), String> {
+pub fn set_app_icon(
+    app: AppHandle,
+    icon_id: String,
+    active: Option<bool>,
+) -> Result<(), String> {
+    if let Ok(mut lock) = CURRENT_APP_ICON.lock() {
+        *lock = Some(icon_id.clone());
+    }
+    if let Some(act) = active {
+        CURRENT_PROXY_ACTIVE.store(act, std::sync::atomic::Ordering::SeqCst);
+    }
+    let is_active = CURRENT_PROXY_ACTIVE.load(std::sync::atomic::Ordering::SeqCst);
+
     let window_bytes: &[u8] = match icon_id.as_str() {
         "vela-cream" => include_bytes!("../icons/variants/vela-cream-256.png"),
         "vela-amber" => include_bytes!("../icons/variants/vela-amber-256.png"),
@@ -2310,7 +2654,7 @@ pub fn set_app_icon(app: AppHandle, icon_id: String) -> Result<(), String> {
         _ => include_bytes!("../icons/variants/monolith-256.png"),
     };
 
-    let tray_bytes: &[u8] = match icon_id.as_str() {
+    let small_icon_bytes: &[u8] = match icon_id.as_str() {
         "vela-cream" => include_bytes!("../icons/variants/vela-cream-32.png"),
         "vela-amber" => include_bytes!("../icons/variants/vela-amber-32.png"),
         "sunset-peach" => include_bytes!("../icons/variants/sunset-peach-32.png"),
@@ -2329,6 +2673,8 @@ pub fn set_app_icon(app: AppHandle, icon_id: String) -> Result<(), String> {
         "midnight-white" => include_bytes!("../icons/variants/midnight-white.ico"),
         _ => include_bytes!("../icons/variants/monolith.ico"),
     };
+
+    let tray_bytes = get_tray_icon_bytes(&icon_id, is_active);
 
     // 1. Standard Tauri window icon
     if let Ok(window_icon) = Image::from_bytes(window_bytes) {
@@ -2362,8 +2708,8 @@ pub fn set_app_icon(app: AppHandle, icon_id: String) -> Result<(), String> {
                         0,
                     );
                     let hicon_small = win32_icon::CreateIconFromResourceEx(
-                        tray_bytes.as_ptr(),
-                        tray_bytes.len() as u32,
+                        small_icon_bytes.as_ptr(),
+                        small_icon_bytes.len() as u32,
                         1,
                         0x00030000,
                         32,
