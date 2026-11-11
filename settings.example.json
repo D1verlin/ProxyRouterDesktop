@@ -60,7 +60,8 @@
       "enabled": true,
       "hosts": [
         "*.antigravity.google", "antigravity.google", "*.deepmind.google", "deepmind.google", "*.deepmind.com",
-        "daily-cloudcode-pa.googleapis.com", "cloudcode-pa.googleapis.com"
+        "daily-cloudcode-pa.googleapis.com", "cloudcode-pa.googleapis.com", "cloudaicompanion.googleapis.com",
+        "oauth2.googleapis.com", "accounts.google.com", "googleapis.com"
       ]
     },
     {

@@ -117,7 +117,14 @@ const initialState = {
       host: '*.antigravity.google',
       hosts: [
         '*.antigravity.google',
+        'antigravity.google',
         '*.deepmind.google',
+        'daily-cloudcode-pa.googleapis.com',
+        'cloudcode-pa.googleapis.com',
+        'cloudaicompanion.googleapis.com',
+        'oauth2.googleapis.com',
+        'accounts.google.com',
+        'googleapis.com',
         'deepmind.google',
         '*.deepmind.com',
       ],
@@ -270,7 +277,7 @@ const initialState = {
   autoRouteDetected: false,
 
   /** Terminal & Dev tools proxy status */
-  terminalProxyActive: true,
+  terminalProxyActive: false,
   proxyMode: 'split',
 
   /** Server configuration */

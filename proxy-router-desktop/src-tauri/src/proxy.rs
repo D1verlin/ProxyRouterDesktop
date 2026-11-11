@@ -325,6 +325,14 @@ pub fn should_proxy_host(target: &str) -> bool {
         return false;
     }
 
+    // Never proxy traffic targeting the upstream VPS itself (prevents Whitelist API loops)
+    if let Ok(lock) = UPSTREAM_PROXY.read() {
+        let up_host = lock.0.trim().to_lowercase();
+        if !up_host.is_empty() && host == up_host {
+            return false;
+        }
+    }
+
     // NEVER proxy local network or Apple authentication / services (critical for AltServer & AltStore)
     if host.ends_with(".apple.com") || host == "apple.com"
         || host.ends_with(".icloud.com") || host == "icloud.com"
@@ -343,6 +351,9 @@ pub fn should_proxy_host(target: &str) -> bool {
 
     // Core AI and developer ecosystem domains that MUST ALWAYS route through VPS proxy
     const CORE_AI_DOMAINS: &[&str] = &[
+        "daily-cloudcode-pa.googleapis.com",
+        "cloudcode-pa.googleapis.com",
+        "cloudaicompanion.googleapis.com",
         "googleapis.com",
         "google.com",
         "google",
@@ -350,8 +361,14 @@ pub fn should_proxy_host(target: &str) -> bool {
         "notebooklm.google",
         "cloud.google",
         "deepmind.google",
+        "deepmind.com",
+        "withgoogle.com",
         "gstatic.com",
         "googleusercontent.com",
+        "gvt1.com",
+        "gvt2.com",
+        "ggpht.com",
+        "goog",
         "aistudio.google.com",
         "antigravity.google",
         "ai.google.dev",
@@ -1444,7 +1461,7 @@ pub async fn set_system_proxy(
     #[allow(non_snake_case)]
     setEnv: Option<bool>,
 ) -> Result<String, String> {
-    let should_set_env = set_env.or(setEnv).unwrap_or(true);
+    let should_set_env = set_env.or(setEnv).unwrap_or(false);
     tauri::async_runtime::spawn_blocking(move || {
         PROXY_ACTIVE.store(true, std::sync::atomic::Ordering::SeqCst);
         apply_windows_system_proxy(true)?;
@@ -1463,8 +1480,6 @@ pub async fn set_system_proxy(
 pub fn clear_system_proxy_sync() -> Result<String, String> {
     PROXY_ACTIVE.store(false, std::sync::atomic::Ordering::SeqCst);
     win32_proxy::clear_system_proxy_native();
-    apply_windows_system_proxy(false)?;
-    let _ = set_terminal_env_proxy_internal(None, false);
     if let Ok(mut lock) = PAC_CONTENT.write() {
         *lock = Some(Arc::new(
             "// Proxy Disabled\nfunction FindProxyForURL(url, host) {\n  return 'DIRECT';\n}\n".to_string()
@@ -1474,9 +1489,6 @@ pub fn clear_system_proxy_sync() -> Result<String, String> {
     if let Ok(mut cache) = DNS_CACHE.write() {
         *cache = None;
     }
-    let _ = hidden_command("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", "Clear-DnsClientCache"])
-        .output();
     Ok("System proxy cleared and environment variables removed".to_string())
 }
 
@@ -1577,8 +1589,9 @@ pub async fn get_public_ip() -> Result<String, String> {
             "https://ipv4.icanhazip.com",
         ];
 
+        let curl_bin = if cfg!(windows) { "curl.exe" } else { "curl" };
         for url in curl_targets {
-            let mut cmd = hidden_command("curl.exe");
+            let mut cmd = hidden_command(curl_bin);
             cmd.args(["--silent", "--connect-timeout", "1", "--max-time", "2", "--noproxy", "*", url]);
             cmd.env_remove("HTTP_PROXY")
                .env_remove("HTTPS_PROXY")
@@ -1617,7 +1630,14 @@ pub async fn api_whitelist_request(
             return Err("API URL is not configured. Please specify your server address in Settings (e.g. http://YOUR_SERVER_IP:1135)".to_string());
         }
 
-        let mut cmd = hidden_command("curl.exe");
+        let curl_bin = if cfg!(windows) { "curl.exe" } else { "curl" };
+        let mut cmd = hidden_command(curl_bin);
+        cmd.env_remove("HTTP_PROXY")
+           .env_remove("HTTPS_PROXY")
+           .env_remove("ALL_PROXY")
+           .env_remove("http_proxy")
+           .env_remove("https_proxy")
+           .env_remove("all_proxy");
         cmd.args([
             "--silent",
             "--show-error",
@@ -1824,6 +1844,10 @@ pub fn launch_app_with_proxy(
 
     let lower_path = expanded_path.to_lowercase();
     let is_chromium_electron = lower_path.contains("chrome")
+        || lower_path.contains("chromium")
+        || lower_path.contains("antigravity")
+        || lower_path.contains("agy")
+        || lower_path.contains("windsurf")
         || lower_path.contains("cursor")
         || lower_path.contains("code")
         || lower_path.contains("discord")
@@ -1929,72 +1953,11 @@ pub fn launch_proxied_terminal() -> Result<u32, String> {
 }
 
 pub fn set_terminal_env_proxy_internal(proxy_url: Option<String>, enabled: bool) -> Result<String, String> {
-    let env_reg = r"HKCU\Environment";
-    let eff_url = proxy_url
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| "http://127.0.0.1:8183".to_string());
-
-    let vars = [
-        "HTTP_PROXY",
-        "HTTPS_PROXY",
-        "ALL_PROXY",
-        "NO_PROXY",
-        "http_proxy",
-        "https_proxy",
-        "all_proxy",
-        "no_proxy",
-    ];
-
-    let no_proxy_val = "localhost,127.0.0.1,::1,<local>,*.local,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,*.apple.com,*.icloud.com,apple.com,icloud.com,*.mzstatic.com,*.aaplimg.com,*.apple-cloudkit.com,*.crashlytics.com";
-
+    win32_proxy::set_terminal_env_proxy_native(proxy_url.as_deref(), enabled)?;
     if enabled {
-        for var in &vars {
-            let val = if var.to_ascii_uppercase().contains("NO_PROXY") {
-                no_proxy_val
-            } else {
-                &eff_url
-            };
-            let _ = hidden_command("reg")
-                .args(["add", env_reg, "/v", var, "/t", "REG_SZ", "/d", val, "/f"])
-                .output();
-        }
-    } else {
-        for var in &vars {
-            let _ = hidden_command("reg")
-                .args(["delete", env_reg, "/v", var, "/f"])
-                .output();
-            let _ = hidden_command("reg")
-                .args(["delete", r"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment", "/v", var, "/f"])
-                .output();
-        }
-        let _ = hidden_command("netsh").args(["winhttp", "reset", "proxy"]).output();
-    }
-
-    // Broadcast WM_SETTINGCHANGE for "Environment" and "Internet Settings"
-    let script = r#"
-$wininetCode = @"
-using System;
-using System.Runtime.InteropServices;
-public class EnvRefreshHelper {
-    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
-    public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);
-    public const uint WM_SETTINGCHANGE = 0x001A;
-    public const uint SMTO_ABORTIFHUNG = 0x0002;
-    public static void Notify() {
-        UIntPtr result;
-        SendMessageTimeout((IntPtr)0xffff, WM_SETTINGCHANGE, UIntPtr.Zero, "Environment", SMTO_ABORTIFHUNG, 1000, out result);
-        SendMessageTimeout((IntPtr)0xffff, WM_SETTINGCHANGE, UIntPtr.Zero, "Internet Settings", SMTO_ABORTIFHUNG, 1000, out result);
-    }
-}
-"@
-Add-Type -TypeDefinition $wininetCode -ErrorAction SilentlyContinue
-[EnvRefreshHelper]::Notify()
-"#;
-    let _ = hidden_command("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", script])
-        .output();
-
-    if enabled {
+        let eff_url = proxy_url
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| "http://127.0.0.1:8183".to_string());
         Ok(format!("Terminal proxy variables set to {}", eff_url))
     } else {
         Ok("Terminal proxy variables removed".to_string())
@@ -2901,12 +2864,15 @@ pub mod win32_proxy {
 
     pub const HKEY_CURRENT_USER: isize = -2147483647; // 0x80000001
     pub const KEY_SET_VALUE: u32 = 0x0002;
+    pub const KEY_READ: u32 = 0x20019;
     pub const REG_SZ: u32 = 1;
     pub const REG_BINARY: u32 = 3;
     pub const REG_DWORD: u32 = 4;
 
     pub const INTERNET_OPTION_SETTINGS_CHANGED: u32 = 39;
     pub const INTERNET_OPTION_REFRESH: u32 = 37;
+    pub const WM_SETTINGCHANGE: u32 = 0x001A;
+    pub const SMTO_ABORTIFHUNG: u32 = 0x0002;
 
     #[link(name = "advapi32")]
     extern "system" {
@@ -2916,6 +2882,18 @@ pub mod win32_proxy {
             ulOptions: u32,
             samDesired: u32,
             phkResult: *mut isize,
+        ) -> i32;
+
+        pub fn RegCreateKeyExW(
+            hKey: isize,
+            lpSubKey: *const u16,
+            Reserved: u32,
+            lpClass: *const u16,
+            dwOptions: u32,
+            samDesired: u32,
+            lpSecurityAttributes: *mut c_void,
+            phkResult: *mut isize,
+            lpdwDisposition: *mut u32,
         ) -> i32;
 
         pub fn RegSetValueExW(
@@ -2930,6 +2908,17 @@ pub mod win32_proxy {
         pub fn RegDeleteValueW(
             hKey: isize,
             lpValueName: *const u16,
+        ) -> i32;
+
+        pub fn RegEnumValueW(
+            hKey: isize,
+            dwIndex: u32,
+            lpValueName: *mut u16,
+            lpcchValueName: *mut u32,
+            lpReserved: *mut u32,
+            lpType: *mut u32,
+            lpData: *mut u8,
+            lpcbData: *mut u32,
         ) -> i32;
 
         pub fn RegCloseKey(hKey: isize) -> i32;
@@ -2964,63 +2953,318 @@ pub mod win32_proxy {
             HandlerRoutine: Option<unsafe extern "system" fn(u32) -> i32>,
             Add: i32,
         ) -> i32;
+
+        pub fn SetProcessShutdownParameters(
+            dwLevel: u32,
+            dwFlags: u32,
+        ) -> i32;
     }
 
-    /// Fast, native <1ms Win32 reset of system proxy to Direct (no PowerShell overhead)
-    pub fn clear_system_proxy_native() {
-        // 1. Reset HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings
-        let subkey: Vec<u16> = "Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings\0".encode_utf16().collect();
-        let mut hkey: isize = 0;
-        if unsafe { RegOpenKeyExW(HKEY_CURRENT_USER, subkey.as_ptr(), 0, KEY_SET_VALUE, &mut hkey) } == 0 {
-            let val_enable: Vec<u16> = "ProxyEnable\0".encode_utf16().collect();
-            let zero: u32 = 0;
-            unsafe {
-                RegSetValueExW(hkey, val_enable.as_ptr(), 0, REG_DWORD, &zero as *const _ as *const u8, 4);
-            }
+    #[link(name = "comctl32")]
+    #[allow(non_snake_case)]
+    extern "system" {
+        pub fn SetWindowSubclass(
+            hWnd: *mut c_void,
+            pfnSubclass: unsafe extern "system" fn(
+                hWnd: *mut c_void,
+                uMsg: u32,
+                wParam: usize,
+                lParam: isize,
+                uIdSubclass: usize,
+                dwRefData: usize,
+            ) -> isize,
+            uIdSubclass: usize,
+            dwRefData: usize,
+        ) -> i32;
 
-            let val_server: Vec<u16> = "ProxyServer\0".encode_utf16().collect();
-            let empty_sz: [u16; 1] = [0];
-            unsafe {
-                RegSetValueExW(hkey, val_server.as_ptr(), 0, REG_SZ, empty_sz.as_ptr() as *const u8, 2);
-            }
+        pub fn DefSubclassProc(
+            hWnd: *mut c_void,
+            uMsg: u32,
+            wParam: usize,
+            lParam: isize,
+        ) -> isize;
+    }
 
-            let val_pac: Vec<u16> = "AutoConfigURL\0".encode_utf16().collect();
-            unsafe {
-                RegDeleteValueW(hkey, val_pac.as_ptr());
-                RegCloseKey(hkey);
+    #[link(name = "dnsapi")]
+    extern "system" {
+        pub fn DnsFlushResolverCache() -> i32;
+    }
+
+    pub fn set_terminal_env_proxy_native(proxy_url: Option<&str>, enabled: bool) -> Result<(), String> {
+        let eff_url = proxy_url
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or("http://127.0.0.1:8183");
+
+        let env_subkey: Vec<u16> = "Environment\0".encode_utf16().collect();
+        let mut env_hkey: isize = 0;
+        let res = unsafe {
+            RegCreateKeyExW(
+                HKEY_CURRENT_USER,
+                env_subkey.as_ptr(),
+                0,
+                null_mut(),
+                0,
+                KEY_SET_VALUE,
+                null_mut(),
+                &mut env_hkey,
+                null_mut(),
+            )
+        };
+        if res != 0 {
+            return Err(format!("Failed to open HKCU\\Environment: error {}", res));
+        }
+
+        let vars = [
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "ALL_PROXY",
+            "NO_PROXY",
+            "http_proxy",
+            "https_proxy",
+            "all_proxy",
+            "no_proxy",
+        ];
+
+        let no_proxy_val = "localhost,127.0.0.1,::1,<local>,*.local,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,*.apple.com,*.icloud.com,apple.com,icloud.com,*.mzstatic.com,*.aaplimg.com,*.apple-cloudkit.com,*.crashlytics.com";
+
+        if enabled {
+            for var in &vars {
+                let val = if var.to_ascii_uppercase().contains("NO_PROXY") {
+                    no_proxy_val
+                } else {
+                    eff_url
+                };
+                let var_u16: Vec<u16> = format!("{}\0", var).encode_utf16().collect();
+                let val_u16: Vec<u16> = format!("{}\0", val).encode_utf16().collect();
+                unsafe {
+                    RegSetValueExW(
+                        env_hkey,
+                        var_u16.as_ptr(),
+                        0,
+                        REG_SZ,
+                        val_u16.as_ptr() as *const u8,
+                        (val_u16.len() * 2) as u32,
+                    );
+                }
+            }
+        } else {
+            for var in &vars {
+                let var_u16: Vec<u16> = format!("{}\0", var).encode_utf16().collect();
+                unsafe {
+                    RegDeleteValueW(env_hkey, var_u16.as_ptr());
+                }
             }
         }
 
-        // 2. Reset Connections DefaultConnectionSettings and SavedLegacySettings to DIRECT (0x01)
+        unsafe {
+            RegCloseKey(env_hkey);
+            let env_param: Vec<u16> = "Environment\0".encode_utf16().collect();
+            let mut result: usize = 0;
+            SendMessageTimeoutW(0xffff, WM_SETTINGCHANGE, 0, env_param.as_ptr(), SMTO_ABORTIFHUNG, 200, &mut result);
+        }
+
+        Ok(())
+    }
+
+    pub fn apply_system_proxy_native(enabled: bool) -> Result<(), String> {
+        let subkey: Vec<u16> = "Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings\0".encode_utf16().collect();
+        let mut hkey: isize = 0;
+        let res = unsafe { RegOpenKeyExW(HKEY_CURRENT_USER, subkey.as_ptr(), 0, KEY_SET_VALUE, &mut hkey) };
+        if res != 0 {
+            return Err(format!("Failed to open Internet Settings registry key: {}", res));
+        }
+
+        let val_pac: Vec<u16> = "AutoConfigURL\0".encode_utf16().collect();
+        unsafe {
+            RegDeleteValueW(hkey, val_pac.as_ptr());
+        }
+
+        let val_enable: Vec<u16> = "ProxyEnable\0".encode_utf16().collect();
+        let val_server: Vec<u16> = "ProxyServer\0".encode_utf16().collect();
+        let val_override: Vec<u16> = "ProxyOverride\0".encode_utf16().collect();
+
+        let blob: Vec<u8>;
+
+        if enabled {
+            let one: u32 = 1;
+            let srv: Vec<u16> = "127.0.0.1:8183\0".encode_utf16().collect();
+            let ovr: Vec<u16> = "localhost;127.0.0.1;<local>\0".encode_utf16().collect();
+
+            unsafe {
+                RegSetValueExW(hkey, val_enable.as_ptr(), 0, REG_DWORD, &one as *const _ as *const u8, 4);
+                RegSetValueExW(hkey, val_server.as_ptr(), 0, REG_SZ, srv.as_ptr() as *const u8, (srv.len() * 2) as u32);
+                RegSetValueExW(hkey, val_override.as_ptr(), 0, REG_SZ, ovr.as_ptr() as *const u8, (ovr.len() * 2) as u32);
+            }
+
+            // Flag 0x03 = PROXY_TYPE_DIRECT (1) | PROXY_TYPE_PROXY_SERVER (2)
+            let proxy_bytes = b"127.0.0.1:8183";
+            let bypass_bytes = b"localhost;127.0.0.1;<local>";
+            let mut b = Vec::with_capacity(80);
+            b.extend_from_slice(&[0x46, 0x00, 0x00, 0x00, 0x12, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00]);
+            b.extend_from_slice(&(proxy_bytes.len() as u32).to_le_bytes());
+            b.extend_from_slice(proxy_bytes);
+            b.extend_from_slice(&(bypass_bytes.len() as u32).to_le_bytes());
+            b.extend_from_slice(bypass_bytes);
+            b.extend_from_slice(&(0u32).to_le_bytes()); // pac len = 0
+            b.resize(b.len() + 32, 0u8);
+            blob = b;
+
+            // Set RunOnce safety net in case of sudden power cut or crash
+            let runonce_subkey: Vec<u16> = "Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce\0".encode_utf16().collect();
+            let mut runonce_hkey: isize = 0;
+            if unsafe { RegCreateKeyExW(HKEY_CURRENT_USER, runonce_subkey.as_ptr(), 0, null_mut(), 0, KEY_SET_VALUE, null_mut(), &mut runonce_hkey, null_mut()) } == 0 {
+                let ro_name: Vec<u16> = "ProxyRouterRescue\0".encode_utf16().collect();
+                let ro_cmd: Vec<u16> = "cmd.exe /c reg add \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings\" /v ProxyEnable /t REG_DWORD /d 0 /f & reg delete \"HKCU\\Environment\" /v HTTP_PROXY /f & reg delete \"HKCU\\Environment\" /v HTTPS_PROXY /f & reg delete \"HKCU\\Environment\" /v ALL_PROXY /f\0".encode_utf16().collect();
+                unsafe {
+                    RegSetValueExW(runonce_hkey, ro_name.as_ptr(), 0, REG_SZ, ro_cmd.as_ptr() as *const u8, (ro_cmd.len() * 2) as u32);
+                    RegCloseKey(runonce_hkey);
+                }
+            }
+        } else {
+            let zero: u32 = 0;
+            let empty_sz: [u16; 1] = [0];
+
+            unsafe {
+                RegSetValueExW(hkey, val_enable.as_ptr(), 0, REG_DWORD, &zero as *const _ as *const u8, 4);
+                RegSetValueExW(hkey, val_server.as_ptr(), 0, REG_SZ, empty_sz.as_ptr() as *const u8, 2);
+            }
+
+            // Flag 0x01 = PROXY_TYPE_DIRECT (strictly direct, no proxy)
+            let bypass_bytes = b"localhost;127.0.0.1;<local>";
+            let mut b = Vec::with_capacity(80);
+            b.extend_from_slice(&[0x46, 0x00, 0x00, 0x00, 0x13, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00]);
+            b.extend_from_slice(&(0u32).to_le_bytes()); // proxy len = 0
+            b.extend_from_slice(&(bypass_bytes.len() as u32).to_le_bytes());
+            b.extend_from_slice(bypass_bytes);
+            b.extend_from_slice(&(0u32).to_le_bytes()); // pac len = 0
+            b.resize(b.len() + 32, 0u8);
+            blob = b;
+
+            // Remove RunOnce safety net since proxy is cleanly disabled
+            let runonce_subkey: Vec<u16> = "Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce\0".encode_utf16().collect();
+            let mut runonce_hkey: isize = 0;
+            if unsafe { RegOpenKeyExW(HKEY_CURRENT_USER, runonce_subkey.as_ptr(), 0, KEY_SET_VALUE, &mut runonce_hkey) } == 0 {
+                let ro_name: Vec<u16> = "ProxyRouterRescue\0".encode_utf16().collect();
+                unsafe {
+                    RegDeleteValueW(runonce_hkey, ro_name.as_ptr());
+                    RegCloseKey(runonce_hkey);
+                }
+            }
+        }
+
+        unsafe {
+            RegCloseKey(hkey);
+        }
+
+        // Apply binary blob to Connections
         let conn_subkey: Vec<u16> = "Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings\\Connections\0".encode_utf16().collect();
         let mut conn_hkey: isize = 0;
-        if unsafe { RegOpenKeyExW(HKEY_CURRENT_USER, conn_subkey.as_ptr(), 0, KEY_SET_VALUE, &mut conn_hkey) } == 0 {
-            let bypass = b"localhost;127.0.0.1;<local>";
-            let mut blob = Vec::with_capacity(80);
-            blob.extend_from_slice(&[0x46, 0x00, 0x00, 0x00, 0x13, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00]);
-            blob.extend_from_slice(&(0u32).to_le_bytes()); // proxy len = 0
-            blob.extend_from_slice(&(bypass.len() as u32).to_le_bytes()); // bypass len
-            blob.extend_from_slice(bypass);
-            blob.extend_from_slice(&(0u32).to_le_bytes()); // pac len = 0
-            blob.resize(blob.len() + 32, 0u8); // 32 bytes padding
+        if unsafe { RegOpenKeyExW(HKEY_CURRENT_USER, conn_subkey.as_ptr(), 0, KEY_READ | KEY_SET_VALUE, &mut conn_hkey) } == 0 {
+            let mut names: Vec<Vec<u16>> = Vec::new();
+            let mut index = 0u32;
+            let mut name_buf = [0u16; 256];
+            loop {
+                let mut name_len = name_buf.len() as u32;
+                let res = unsafe {
+                    RegEnumValueW(
+                        conn_hkey,
+                        index,
+                        name_buf.as_mut_ptr(),
+                        &mut name_len,
+                        null_mut(),
+                        null_mut(),
+                        null_mut(),
+                        null_mut(),
+                    )
+                };
+                if res != 0 {
+                    break;
+                }
+                let mut name_vec = name_buf[..name_len as usize].to_vec();
+                name_vec.push(0);
+                names.push(name_vec);
+                index += 1;
+            }
 
             let val_def: Vec<u16> = "DefaultConnectionSettings\0".encode_utf16().collect();
             let val_saved: Vec<u16> = "SavedLegacySettings\0".encode_utf16().collect();
+            if !names.contains(&val_def) {
+                names.push(val_def);
+            }
+            if !names.contains(&val_saved) {
+                names.push(val_saved);
+            }
+
+            for name in &names {
+                unsafe {
+                    RegSetValueExW(conn_hkey, name.as_ptr(), 0, REG_BINARY, blob.as_ptr(), blob.len() as u32);
+                }
+            }
             unsafe {
-                RegSetValueExW(conn_hkey, val_def.as_ptr(), 0, REG_BINARY, blob.as_ptr(), blob.len() as u32);
-                RegSetValueExW(conn_hkey, val_saved.as_ptr(), 0, REG_BINARY, blob.as_ptr(), blob.len() as u32);
                 RegCloseKey(conn_hkey);
             }
         }
 
-        // 3. Notify WinINet and broadcast setting change
+        // WinINet notifications
         unsafe {
             InternetSetOptionW(null_mut(), INTERNET_OPTION_SETTINGS_CHANGED, null_mut(), 0);
             InternetSetOptionW(null_mut(), INTERNET_OPTION_REFRESH, null_mut(), 0);
 
             let param: Vec<u16> = "Internet Settings\0".encode_utf16().collect();
             let mut result: usize = 0;
-            SendMessageTimeoutW(0xffff, 0x001A, 0, param.as_ptr(), 0x0002, 1000, &mut result);
+            SendMessageTimeoutW(0xffff, WM_SETTINGCHANGE, 0, param.as_ptr(), SMTO_ABORTIFHUNG, 200, &mut result);
+
+            if !enabled {
+                DnsFlushResolverCache();
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Fast, native <1ms Win32 reset of all system proxy and environment variables to Direct
+    pub fn clear_system_proxy_native() {
+        let _ = apply_system_proxy_native(false);
+        let _ = set_terminal_env_proxy_native(None, false);
+    }
+
+    unsafe extern "system" fn window_subclass_proc(
+        hwnd: *mut c_void,
+        msg: u32,
+        wparam: usize,
+        lparam: isize,
+        _uid_subclass: usize,
+        _ref_data: usize,
+    ) -> isize {
+        const WM_QUERYENDSESSION: u32 = 0x0011;
+        const WM_ENDSESSION: u32 = 0x0016;
+        const WM_DESTROY: u32 = 0x0002;
+
+        match msg {
+            WM_QUERYENDSESSION => {
+                eprintln!("[win32] Received WM_QUERYENDSESSION: cleaning up proxy before shutdown/logoff");
+                clear_system_proxy_native();
+                return 1;
+            }
+            WM_ENDSESSION => {
+                if wparam != 0 {
+                    eprintln!("[win32] Received WM_ENDSESSION: session ending, ensuring proxy clean");
+                    clear_system_proxy_native();
+                }
+                return 0;
+            }
+            WM_DESTROY => {
+                clear_system_proxy_native();
+            }
+            _ => {}
+        }
+
+        DefSubclassProc(hwnd, msg, wparam, lparam)
+    }
+
+    pub fn subclass_main_window(hwnd: *mut c_void) {
+        unsafe {
+            SetWindowSubclass(hwnd, window_subclass_proc, 1001, 0);
         }
     }
 
@@ -3031,6 +3275,7 @@ pub mod win32_proxy {
 
     pub fn install_shutdown_handler() {
         unsafe {
+            SetProcessShutdownParameters(0x300, 0);
             SetConsoleCtrlHandler(Some(console_ctrl_handler), 1);
         }
     }
@@ -3038,131 +3283,164 @@ pub mod win32_proxy {
 
 #[cfg(not(windows))]
 pub mod win32_proxy {
-    pub fn clear_system_proxy_native() {}
+    use std::ffi::c_void;
+    use std::process::Command;
+
+    fn configure_linux_antigravity_settings(proxy_url: &str, enabled: bool) {
+        if let Ok(home) = std::env::var("HOME") {
+            let agy_settings = std::path::PathBuf::from(&home)
+                .join(".config")
+                .join("Antigravity")
+                .join("User")
+                .join("settings.json");
+
+            if let Some(parent) = agy_settings.parent() {
+                if parent.exists() {
+                    let mut data: serde_json::Value = std::fs::read_to_string(&agy_settings)
+                        .ok()
+                        .and_then(|s| serde_json::from_str(&s).ok())
+                        .unwrap_or_else(|| serde_json::json!({}));
+
+                    if let Some(obj) = data.as_object_mut() {
+                        if enabled {
+                            obj.insert("http.proxy".to_string(), serde_json::Value::String(proxy_url.to_string()));
+                            obj.insert("http.proxySupport".to_string(), serde_json::Value::String("override".to_string()));
+                            obj.insert("http.proxyStrictSSL".to_string(), serde_json::Value::Bool(false));
+                        } else if obj.get("http.proxy").and_then(|v| v.as_str()).map(|s| s.contains("127.0.0.1")).unwrap_or(false) {
+                            obj.remove("http.proxy");
+                        }
+                        if let Ok(serialized) = serde_json::to_string_pretty(&data) {
+                            let _ = std::fs::write(&agy_settings, serialized);
+                        }
+                    }
+                }
+            }
+
+            // Never leave static environment.d files that can break network on reboot
+            let env_d = std::path::PathBuf::from(&home).join(".config").join("environment.d");
+            let _ = std::fs::remove_file(env_d.join("proxy-router.conf"));
+            let _ = std::fs::remove_file(env_d.join("proxy.conf"));
+        }
+    }
+
+    pub fn set_terminal_env_proxy_native(proxy_url: Option<&str>, enabled: bool) -> Result<(), String> {
+        let eff_url = proxy_url
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or("http://127.0.0.1:8183");
+        let no_proxy = "localhost,127.0.0.1,::1,.local,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16";
+
+        if enabled {
+            let _ = Command::new("systemctl")
+                .args([
+                    "--user",
+                    "set-environment",
+                    &format!("HTTP_PROXY={}", eff_url),
+                    &format!("HTTPS_PROXY={}", eff_url),
+                    &format!("ALL_PROXY={}", eff_url),
+                    &format!("http_proxy={}", eff_url),
+                    &format!("https_proxy={}", eff_url),
+                    &format!("all_proxy={}", eff_url),
+                    &format!("NO_PROXY={}", no_proxy),
+                    &format!("no_proxy={}", no_proxy),
+                ])
+                .status();
+            let _ = Command::new("dbus-update-activation-environment")
+                .args([
+                    "--systemd",
+                    &format!("HTTP_PROXY={}", eff_url),
+                    &format!("HTTPS_PROXY={}", eff_url),
+                    &format!("ALL_PROXY={}", eff_url),
+                    &format!("http_proxy={}", eff_url),
+                    &format!("https_proxy={}", eff_url),
+                    &format!("all_proxy={}", eff_url),
+                    &format!("NO_PROXY={}", no_proxy),
+                    &format!("no_proxy={}", no_proxy),
+                ])
+                .status();
+        } else {
+            let _ = Command::new("systemctl")
+                .args([
+                    "--user",
+                    "unset-environment",
+                    "HTTP_PROXY",
+                    "HTTPS_PROXY",
+                    "ALL_PROXY",
+                    "http_proxy",
+                    "https_proxy",
+                    "all_proxy",
+                    "NO_PROXY",
+                    "no_proxy",
+                ])
+                .status();
+        }
+        Ok(())
+    }
+
+    pub fn apply_system_proxy_native(enabled: bool) -> Result<(), String> {
+        let proxy_url = "http://127.0.0.1:8183";
+        if enabled {
+            let _ = Command::new("gsettings").args(["set", "org.gnome.system.proxy", "mode", "manual"]).status();
+            let _ = Command::new("gsettings").args(["set", "org.gnome.system.proxy.http", "host", "127.0.0.1"]).status();
+            let _ = Command::new("gsettings").args(["set", "org.gnome.system.proxy.http", "port", "8183"]).status();
+            let _ = Command::new("gsettings").args(["set", "org.gnome.system.proxy.https", "host", "127.0.0.1"]).status();
+            let _ = Command::new("gsettings").args(["set", "org.gnome.system.proxy.https", "port", "8183"]).status();
+            let _ = Command::new("gsettings").args(["set", "org.gnome.system.proxy", "ignore-hosts", "['localhost', '127.0.0.0/8', '::1', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16']"]).status();
+            configure_linux_antigravity_settings(proxy_url, true);
+            let _ = set_terminal_env_proxy_native(Some(proxy_url), true);
+        } else {
+            let _ = Command::new("gsettings").args(["set", "org.gnome.system.proxy", "mode", "none"]).status();
+            configure_linux_antigravity_settings(proxy_url, false);
+            let _ = set_terminal_env_proxy_native(None, false);
+        }
+        Ok(())
+    }
+
+    pub fn clear_system_proxy_native() {
+        let _ = apply_system_proxy_native(false);
+    }
+
+    pub fn subclass_main_window(_hwnd: *mut c_void) {}
     pub fn install_shutdown_handler() {}
 }
 
-/// Checks if Windows proxy is still configured to 127.0.0.1:8183 while PROXY_ACTIVE is false,
+/// Checks if Windows/Linux proxy is still configured to 127.0.0.1:8183 while PROXY_ACTIVE is false,
 /// and resets it to direct if so.
 pub fn sanitize_startup_proxy() {
+    #[cfg(not(windows))]
+    {
+        let is_active = PROXY_ACTIVE.load(std::sync::atomic::Ordering::Relaxed);
+        if !is_active {
+            win32_proxy::clear_system_proxy_native();
+        }
+    }
     #[cfg(windows)]
     {
         let is_active = PROXY_ACTIVE.load(std::sync::atomic::Ordering::Relaxed);
         if !is_active {
             let proxy_en = reg_get("ProxyEnable").unwrap_or_default();
             let proxy_srv = reg_get("ProxyServer").unwrap_or_default();
-            if proxy_en == "0x1" || proxy_en == "1" || proxy_srv.contains("127.0.0.1:8183") {
-                eprintln!("[sanitize_startup_proxy] Detected stale proxy settings on startup (ProxyServer: {}, ProxyEnable: {}). Cleaning...", proxy_srv, proxy_en);
+            let http_env = reg_get_key(r"HKCU\Environment", "HTTP_PROXY").unwrap_or_default();
+            let https_env = reg_get_key(r"HKCU\Environment", "HTTPS_PROXY").unwrap_or_default();
+            if proxy_en == "0x1"
+                || proxy_en == "1"
+                || proxy_srv.contains("127.0.0.1:8183")
+                || http_env.contains("127.0.0.1:8183")
+                || https_env.contains("127.0.0.1:8183")
+            {
+                eprintln!(
+                    "[sanitize_startup_proxy] Detected stale proxy settings on startup (ProxyServer: {}, ProxyEnable: {}, HTTP_PROXY: {}). Cleaning...",
+                    proxy_srv, proxy_en, http_env
+                );
                 win32_proxy::clear_system_proxy_native();
-                let _ = apply_windows_system_proxy(false);
             }
         }
     }
 }
 
-
 // ── Registry & WinInet helpers ──────────────────────────────────────────────
 
 fn apply_windows_system_proxy(enabled: bool) -> Result<(), String> {
-    let script = format!(
-        r#"
-$regPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings'
-$connPath = "$regPath\Connections"
-
-# Guarantee AutoConfigURL (PAC) is completely eradicated from registry
-Remove-ItemProperty -Path $regPath -Name 'AutoConfigURL' -ErrorAction SilentlyContinue
-
-if ({}) {{
-    Set-ItemProperty -Path $regPath -Name 'ProxyEnable' -Value 1 -Type DWord
-    Set-ItemProperty -Path $regPath -Name 'ProxyServer' -Value '127.0.0.1:8183' -Type String
-    Set-ItemProperty -Path $regPath -Name 'ProxyOverride' -Value 'localhost;127.0.0.1;<local>' -Type String
-
-    # Flag 0x03 = PROXY_TYPE_DIRECT (1) | PROXY_TYPE_PROXY_SERVER (2)
-    $flags = [byte]0x03
-    $header = [byte[]](0x46, 0x00, 0x00, 0x00, 0x12, 0x00, 0x00, 0x00, $flags, 0x00, 0x00, 0x00)
-    $proxyBytes = [System.Text.Encoding]::ASCII.GetBytes("127.0.0.1:8183")
-    $proxyLen = [BitConverter]::GetBytes([int]$proxyBytes.Length)
-    $bypassBytes = [System.Text.Encoding]::ASCII.GetBytes("localhost;127.0.0.1;<local>")
-    $bypassLen = [BitConverter]::GetBytes([int]$bypassBytes.Length)
-    $pacLen = [BitConverter]::GetBytes([int]0)
-    $padding = New-Object byte[] 32
-    $blob = $header + $proxyLen + $proxyBytes + $bypassLen + $bypassBytes + $pacLen + $padding
-
-    Set-ItemProperty -Path $connPath -Name 'DefaultConnectionSettings' -Value $blob
-    Set-ItemProperty -Path $connPath -Name 'SavedLegacySettings' -Value $blob
-    Get-Item -Path $connPath -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Property | ForEach-Object {{
-        Set-ItemProperty -Path $connPath -Name $_ -Value $blob -ErrorAction SilentlyContinue
-    }}
-}} else {{
-    Set-ItemProperty -Path $regPath -Name 'ProxyEnable' -Value 0 -Type DWord
-    Set-ItemProperty -Path $regPath -Name 'ProxyServer' -Value '' -Type String
-
-    # Flag 0x01 = PROXY_TYPE_DIRECT (strictly direct, no proxy)
-    $flags = [byte]0x01
-    $header = [byte[]](0x46, 0x00, 0x00, 0x00, 0x13, 0x00, 0x00, 0x00, $flags, 0x00, 0x00, 0x00)
-    $proxyLen = [BitConverter]::GetBytes([int]0)
-    $bypassBytes = [System.Text.Encoding]::ASCII.GetBytes("localhost;127.0.0.1;<local>")
-    $bypassLen = [BitConverter]::GetBytes([int]$bypassBytes.Length)
-    $pacLen = [BitConverter]::GetBytes([int]0)
-    $padding = New-Object byte[] 32
-    $blob = $header + $proxyLen + $bypassLen + $bypassBytes + $pacLen + $padding
-
-    Set-ItemProperty -Path $connPath -Name 'DefaultConnectionSettings' -Value $blob
-    Set-ItemProperty -Path $connPath -Name 'SavedLegacySettings' -Value $blob
-    Get-Item -Path $connPath -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Property | ForEach-Object {{
-        Set-ItemProperty -Path $connPath -Name $_ -Value $blob -ErrorAction SilentlyContinue
-    }}
-}}
-
-$wininetCode = @"
-using System;
-using System.Runtime.InteropServices;
-public class WinInetHelper {{
-    [DllImport("wininet.dll", SetLastError = true)]
-    public static extern bool InternetSetOption(IntPtr hInternet, int dwOption, IntPtr lpBuffer, int dwBufferLength);
-
-    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
-    public static extern IntPtr SendMessageTimeout(
-        IntPtr hWnd,
-        uint Msg,
-        UIntPtr wParam,
-        string lParam,
-        uint fuFlags,
-        uint uTimeout,
-        out UIntPtr lpdwResult
-    );
-
-    public const int INTERNET_OPTION_SETTINGS_CHANGED = 39;
-    public const int INTERNET_OPTION_REFRESH = 37;
-    public const uint WM_SETTINGCHANGE = 0x001A;
-    public const uint SMTO_ABORTIFHUNG = 0x0002;
-
-    public static void Refresh() {{
-        InternetSetOption(IntPtr.Zero, INTERNET_OPTION_SETTINGS_CHANGED, IntPtr.Zero, 0);
-        InternetSetOption(IntPtr.Zero, INTERNET_OPTION_REFRESH, IntPtr.Zero, 0);
-        UIntPtr result;
-        SendMessageTimeout((IntPtr)0xffff, WM_SETTINGCHANGE, UIntPtr.Zero, "Internet Settings", SMTO_ABORTIFHUNG, 1000, out result);
-    }}
-}}
-"@
-Add-Type -TypeDefinition $wininetCode -ErrorAction SilentlyContinue
-[WinInetHelper]::Refresh()
-"#,
-        if enabled { "$true" } else { "$false" }
-    );
-
-    let out = hidden_command("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
-        .output()
-        .map_err(|e| format!("Failed to configure Windows proxy: {}", e))?;
-
-    if !out.status.success() {
-        return Err(format!(
-            "Failed configuring Windows proxy: {}",
-            String::from_utf8_lossy(&out.stderr)
-        ));
-    }
-
+    win32_proxy::apply_system_proxy_native(enabled)?;
     Ok(())
 }
 

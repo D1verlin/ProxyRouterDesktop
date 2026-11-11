@@ -38,6 +38,13 @@ pub fn run() {
 
             // 1. Window initialization (Show immediately unless launched in silent autostart)
             if let Some(window) = app.get_webview_window("main") {
+                #[cfg(windows)]
+                {
+                    if let Ok(hwnd_obj) = window.hwnd() {
+                        win32_proxy::subclass_main_window(hwnd_obj.0 as *mut std::ffi::c_void);
+                    }
+                }
+
                 if let Some(icon) = app.default_window_icon() {
                     let _ = window.set_icon(icon.clone());
                 }
@@ -154,6 +161,12 @@ pub fn run() {
             window_close,
             set_window_effect,
         ])
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let _ = window.hide();
+                api.prevent_close();
+            }
+        })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|_app_handle, event| {
