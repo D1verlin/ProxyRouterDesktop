@@ -1,0 +1,326 @@
+/* ============================================================
+   Dark Monolith UI System — Core Tokens & Minimal Controls
+   ============================================================ */
+
+:root {
+  color-scheme: dark;
+
+  /* Surfaces */
+  --bg-app:       #121212;
+  --bg-surface:   #121212;
+  --bg-surface-2: #1c1c1c;
+  --bg-surface-3: #161616;
+
+  /* Accent & Typography */
+  --accent:       #FFFFFF;
+  --accent-fg:    #000000;
+  --text-primary: #E0E0E0;
+  --text-sec:     #888888;
+  --text-hint:    #666666;
+
+  /* Borders & Shadows */
+  --border:       rgba(255, 255, 255, 0.08);
+  --border-hover: rgba(255, 255, 255, 0.16);
+  --shadow:       0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg:    0 8px 24px rgba(0, 0, 0, 0.65);
+
+  /* Fonts (zero network dependency) */
+  --font-sans:    'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, 'Cascadia Mono', 'Consolas', monospace;
+
+  /* Radii & Motion */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --t:    all 0.15s ease;
+
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+@supports not (scrollbar-color: auto) {
+  ::-webkit-scrollbar       { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.14); border-radius: 99px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.24); }
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  background: var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ── Buttons ────────────────────────────────────────────────── */
+.btn-primary,
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: var(--r-md);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--t);
+  white-space: nowrap;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border: 1px solid var(--accent);
+}
+.btn-primary:hover:not(:disabled)  { opacity: 0.9; }
+.btn-primary:active:not(:disabled) { opacity: 0.8; }
+
+.btn-secondary {
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+.btn-secondary:hover:not(:disabled) {
+  border-color: var(--border-hover);
+  color: var(--accent);
+  background: rgba(255, 255, 255, 0.04);
+}
+.btn-secondary:active:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.btn-primary:disabled,
+.btn-secondary:disabled,
+.btn-icon:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: 32px;
+  min-block-size: 32px;
+  padding: 0;
+  background: transparent;
+  color: var(--text-sec);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: var(--t);
+}
+.btn-icon:hover:not(:disabled) {
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ── Inputs ─────────────────────────────────────────────────── */
+.input {
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  background: var(--bg-surface-3);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  outline: none;
+  transition: var(--t);
+}
+.input::placeholder { color: var(--text-hint); }
+.input:focus {
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: none;
+}
+
+/* ── Static Status Badges ───────────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-sec);
+  white-space: nowrap;
+}
+
+.badge.active {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: var(--accent);
+}
+
+.badge.warn {
+  color: #E0E0E0;
+  border-color: var(--border-hover);
+}
+
+/* ── Accessible Switch Control ──────────────────────────────── */
+.switch-control {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 38px;
+  height: 22px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.switch-control input {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  width: 38px;
+  height: 22px;
+  margin: 0;
+  border-radius: 99px;
+  background: var(--bg-surface-3);
+  border: 1px solid var(--border-hover);
+  cursor: pointer;
+  transition: var(--t);
+}
+
+.switch-control input::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--text-sec);
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+
+.switch-control input:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.switch-control input:checked::after {
+  transform: translateX(16px);
+  background: var(--accent-fg);
+}
+
+/* ── Segmented Control ──────────────────────────────────────── */
+.segmented {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 4px;
+  padding: 3px;
+  background: var(--bg-surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+
+.segment-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: calc(var(--r-md) - 3px);
+  background: transparent;
+  color: var(--text-sec);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--t);
+}
+
+.segment-btn:hover {
+  color: var(--text-primary);
+}
+
+.segment-btn[aria-pressed="true"] {
+  background: var(--bg-surface-2);
+  color: var(--accent);
+  border-color: var(--border-hover);
+}
+
+/* ── Copy Button Live Region ───────────────────────────────── */
+.copy-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.copy-tip {
+  position: absolute;
+  right: calc(100% + 6px);
+  padding: 2px 7px;
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--r-sm);
+  font-size: 11px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.copy-wrap:has([data-copied]) .copy-tip,
+.copy-wrap:has([data-failed]) .copy-tip {
+  opacity: 1;
+}
+
+/* ── Spin helper (only for active loading buttons, never status dots) */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0.01ms !important;
+  }
+  .spin {
+    animation: none;
+  }
+}

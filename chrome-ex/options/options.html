@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="color-scheme" content="dark">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Proxy Router — Настройки и маршрутизация</title>
+  <link rel="stylesheet" href="../shared/styles/tokens.css">
+  <link rel="stylesheet" href="./options.css">
+</head>
+<body>
+  <div class="options-layout">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <span class="brand-mark" data-icon="brandKnot" data-size="20"></span>
+        <div class="brand-copy">
+          <span class="brand-name" id="sidebar-app-name">Proxy Router</span>
+          <span class="badge" id="sidebar-status-badge">—</span>
+        </div>
+      </div>
+
+      <div class="sidebar-power-card">
+        <button type="button" class="btn-primary sidebar-power-btn" id="sidebar-power-btn">
+          <span data-icon="power" data-size="15"></span>
+          <span id="sidebar-power-label">Включить прокси</span>
+        </button>
+        <div class="sidebar-meta">
+          <div class="sidebar-meta-row">
+            <span class="meta-k" id="sidebar-ip-k">IPv4</span>
+            <span class="meta-v mono" id="sidebar-ip-v">—</span>
+          </div>
+          <div class="sidebar-meta-row">
+            <span class="meta-k" id="sidebar-node-k">Апстрим</span>
+            <span class="meta-v mono" id="sidebar-node-v">—</span>
+          </div>
+        </div>
+        <p class="sidebar-error" id="sidebar-error" hidden role="alert"></p>
+      </div>
+
+      <nav class="side-nav" id="main-nav" aria-label="Разделы">
+        <a href="#sites" class="nav-link" data-route="sites">
+          <span data-icon="sparkles" data-size="15"></span>
+          <span class="nav-label" id="nav-label-sites">AI Сервисы</span>
+        </a>
+        <a href="#whitelist" class="nav-link" data-route="whitelist">
+          <span data-icon="shield" data-size="15"></span>
+          <span class="nav-label" id="nav-label-whitelist">Вайтлист</span>
+        </a>
+        <a href="#settings" class="nav-link" data-route="settings">
+          <span data-icon="settings" data-size="15"></span>
+          <span class="nav-label" id="nav-label-settings">Настройки</span>
+        </a>
+      </nav>
+    </aside>
+
+    <main class="content-area">
+      <section id="view-sites" class="view-section" hidden></section>
+      <section id="view-whitelist" class="view-section" hidden></section>
+      <section id="view-settings" class="view-section" hidden></section>
+    </main>
+  </div>
+
+  <script type="module" src="./options.js"></script>
+</body>
+</html>

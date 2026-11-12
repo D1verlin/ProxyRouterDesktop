@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="color-scheme" content="dark">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Proxy Router</title>
+  <link rel="stylesheet" href="../shared/styles/tokens.css">
+  <link rel="stylesheet" href="./popup.css">
+</head>
+<body>
+  <main class="popup-shell">
+    <header class="popup-header">
+      <div class="brand-lockup">
+        <span class="brand-mark" data-icon="brandKnot" data-size="18"></span>
+        <span class="brand-title" id="app-title">Proxy Router</span>
+      </div>
+      <div class="header-actions">
+        <span class="badge" id="status-badge">—</span>
+        <button type="button" class="btn-icon" id="btn-open-full" aria-label="Открыть полную панель" title="Открыть полную панель">
+          <span data-icon="external" data-size="14"></span>
+        </button>
+      </div>
+    </header>
+
+    <section class="power-section">
+      <button type="button" class="btn-primary power-btn" id="btn-power">
+        <span id="power-icon" data-icon="power" data-size="16"></span>
+        <span id="power-label">Включить прокси</span>
+      </button>
+
+      <div class="notice-box" id="error-box" hidden role="alert">
+        <span class="notice-icon" data-icon="alert" data-size="14"></span>
+        <div class="notice-body">
+          <p class="notice-text" id="error-text"></p>
+          <button type="button" class="btn-secondary btn-xs" id="btn-error-settings" hidden>
+            Открыть настройки
+          </button>
+        </div>
+      </div>
+
+      <div class="segmented" role="group" id="mode-group" aria-label="Режим маршрутизации">
+        <button type="button" class="segment-btn" id="btn-mode-split" data-mode="split" aria-pressed="true">
+          Выборочно (Split)
+        </button>
+        <button type="button" class="segment-btn" id="btn-mode-global" data-mode="global" aria-pressed="false">
+          Весь трафик (Global)
+        </button>
+      </div>
+    </section>
+
+    <section class="card tab-card" id="tab-card">
+      <div class="card-head">
+        <span class="card-label" id="tab-card-title">Текущая вкладка</span>
+        <span class="badge" id="tab-route-badge" hidden>DIRECT</span>
+      </div>
+      <div class="tab-row">
+        <span class="tab-host mono" id="tab-host">—</span>
+        <div class="tab-action-slot" id="tab-action-slot"></div>
+      </div>
+    </section>
+
+    <section class="stats-stack">
+      <div class="card stat-row">
+        <div class="stat-meta">
+          <span class="card-label" id="stat-ip-label">Внешний IPv4</span>
+          <span class="stat-val mono" id="stat-ip-val">—</span>
+        </div>
+        <div class="stat-controls">
+          <div class="copy-wrap">
+            <button type="button" class="btn-icon" id="btn-copy-ip" aria-label="Скопировать IP" title="Скопировать IP">
+              <span data-icon="copy" data-size="13"></span>
+            </button>
+            <span class="copy-tip" id="tip-copy-ip" role="status" aria-live="polite"></span>
+          </div>
+          <button type="button" class="btn-icon" id="btn-refresh-ip" aria-label="Обновить IP" title="Обновить IP">
+            <span id="refresh-ip-icon" data-icon="refresh" data-size="13"></span>
+          </button>
+        </div>
+      </div>
+
+      <div class="stats-grid">
+        <button type="button" class="card stat-tile" id="btn-stat-rules">
+          <span class="card-label" id="stat-rules-label">Правила</span>
+          <span class="stat-val mono" id="stat-rules-val">0</span>
+        </button>
+        <button type="button" class="card stat-tile" id="btn-stat-upstream">
+          <span class="card-label" id="stat-upstream-label">Апстрим</span>
+          <span class="stat-val mono" id="stat-upstream-val">—</span>
+        </button>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="./popup.js"></script>
+</body>
+</html>
