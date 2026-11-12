@@ -66,6 +66,22 @@ jobs:
           releaseDraft: false
           prerelease: false
 
+      - name: Package Chrome Extension ZIP
+        shell: powershell
+        run: |
+          Get-ChildItem -Path "./chrome-ex" -Recurse -Include *.js,*.mjs | ForEach-Object {
+            node --check $_.FullName
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          node --test ./chrome-ex/tests/extension.test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $stage = Join-Path $env:RUNNER_TEMP "chrome-ex-stage"
+          if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
+          Copy-Item -Path "./chrome-ex" -Destination $stage -Recurse
+          Remove-Item -Path (Join-Path $stage "tests") -Recurse -Force
+          Compress-Archive -Path "$stage/*" -DestinationPath "./proxy-router-chrome-ex.zip" -Force
+
       - name: Prepare Portable Executable
         shell: powershell
         run: |
@@ -74,7 +90,7 @@ jobs:
             Copy-Item $bin "./Proxy.Router.Desktop_portable.exe"
           }
 
-      - name: Upload Portable Executable
+      - name: Upload Portable Executable and Chrome Extension
         uses: softprops/action-gh-release@v2
         if: always()
         env:
@@ -83,3 +99,4 @@ jobs:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           files: |
             Proxy.Router.Desktop_portable.exe
+            proxy-router-chrome-ex.zip

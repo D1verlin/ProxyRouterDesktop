@@ -1,0 +1,76 @@
+name: Release Chrome Extension
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'chrome-ex/**'
+      - '.github/workflows/chrome-ex-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: chrome-ex-release
+  cancel-in-progress: true
+
+jobs:
+  release-chrome-ex:
+    name: Test & Package Chrome Extension
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Verify syntax and run tests
+        run: |
+          while IFS= read -r -d '' file; do
+            node --check "$file"
+          done < <(find chrome-ex -type f \( -name '*.js' -o -name '*.mjs' \) -print0)
+          node --test chrome-ex/tests/extension.test.mjs
+
+      - name: Build clean ZIP archive
+        run: |
+          EXT_VERSION=$(node -e "console.log(JSON.parse(require('fs').readFileSync('chrome-ex/manifest.json', 'utf8')).version)")
+          echo "EXT_VERSION=$EXT_VERSION" >> "$GITHUB_ENV"
+          STAGE_DIR=$(mktemp -d)
+          cp -R chrome-ex/. "$STAGE_DIR/"
+          rm -rf "$STAGE_DIR/tests"
+          (cd "$STAGE_DIR" && zip -r "$GITHUB_WORKSPACE/proxy-router-chrome-ex.zip" .)
+
+      - name: Update rolling chrome-latest tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f chrome-latest "$GITHUB_SHA"
+          git push origin chrome-latest --force
+
+      - name: Publish Chrome Extension Release
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: chrome-latest
+          name: 'Proxy Router Chrome Extension (v${{ env.EXT_VERSION }})'
+          make_latest: 'false'
+          prerelease: false
+          overwrite_files: true
+          body: |
+            ## Proxy Router — Chrome Extension (Manifest V3) v${{ env.EXT_VERSION }}
+
+            Готовый архив **`proxy-router-chrome-ex.zip`** без исходников десктопного приложения и тестов.
+
+            ### Быстрая установка в Chrome:
+            1. Скачайте **`proxy-router-chrome-ex.zip`** ниже и распакуйте в постоянную папку (например, рядом с документами или в `%LOCALAPPDATA%\ProxyRouterChrome`).
+            2. Откройте `chrome://extensions` и включите **Режим разработчика** (**Developer mode**).
+            3. Нажмите **Загрузить распакованное расширение** (**Load unpacked**) и выберите распакованную папку с `manifest.json`.
+          files: |
+            proxy-router-chrome-ex.zip
