@@ -675,6 +675,85 @@ fn socks5_handshake(stream: &mut TcpStream, target: &str) -> std::io::Result<()>
     Ok(())
 }
 
+async fn connect_https_upstream(
+    upstream_host: &str,
+    upstream_port: u16,
+    ignore_tls_err: bool,
+) -> Result<tokio_native_tls::TlsStream<tokio::net::TcpStream>, ()> {
+    let upstream_addr_str = format!("{}:{}", upstream_host, upstream_port);
+    let upstream_tcp = match tokio::net::TcpStream::connect(&upstream_addr_str).await {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("[local-forwarder] HTTPS upstream TCP connection failed: {}", e);
+            return Err(());
+        }
+    };
+
+    let mut builder = native_tls::TlsConnector::builder();
+    if ignore_tls_err {
+        builder.danger_accept_invalid_certs(true);
+        builder.danger_accept_invalid_hostnames(true);
+    }
+    let connector = match builder.build() {
+        Ok(c) => tokio_native_tls::TlsConnector::from(c),
+        Err(e) => {
+            eprintln!("[local-forwarder] TLS builder failed: {}", e);
+            return Err(());
+        }
+    };
+
+    match connector.connect(upstream_host, upstream_tcp).await {
+        Ok(s) => Ok(s),
+        Err(e) => {
+            eprintln!("[local-forwarder] TLS handshake with upstream failed: {}", e);
+            Err(())
+        }
+    }
+}
+
+async fn run_bidirectional_tls_relay(
+    client: TcpStream,
+    target: &str,
+    initial_tx_bytes: u64,
+    mut tls_stream: tokio_native_tls::TlsStream<tokio::net::TcpStream>,
+    send_connect_ok: bool,
+    initial_upstream_payload: Option<&[u8]>,
+) {
+    let _ = client.set_nonblocking(true);
+    let mut async_client = match tokio::net::TcpStream::from_std(client) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("[local-forwarder] Async client conversion error: {}", e);
+            return;
+        }
+    };
+
+    if send_connect_ok
+        && async_client
+            .write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+            .await
+            .is_err()
+    {
+        return;
+    }
+
+    if let Some(payload) = initial_upstream_payload {
+        if !payload.is_empty() && tls_stream.write_all(payload).await.is_err() {
+            return;
+        }
+    }
+
+    record_session(target, true, initial_tx_bytes);
+    ACTIVE_CONNECTIONS.fetch_add(1, Ordering::Relaxed);
+    let res = tokio::io::copy_bidirectional(&mut async_client, &mut tls_stream).await;
+    ACTIVE_CONNECTIONS.fetch_sub(1, Ordering::Relaxed);
+    if let Ok((tx, rx)) = res {
+        TOTAL_TX_BYTES.fetch_add(tx, Ordering::Relaxed);
+        TOTAL_RX_BYTES.fetch_add(rx, Ordering::Relaxed);
+        update_session_bytes(target, tx + rx);
+    }
+}
+
 /// Asynchronously forwards traffic to upstream via TLS-encrypted HTTPS CONNECT tunnel
 fn forward_https_upstream(
     mut client: TcpStream,
@@ -685,35 +764,9 @@ fn forward_https_upstream(
     ignore_tls_err: bool,
 ) {
     tauri::async_runtime::spawn(async move {
-        
-        let upstream_addr_str = format!("{}:{}", upstream_host, upstream_port);
-        let upstream_tcp = match tokio::net::TcpStream::connect(&upstream_addr_str).await {
+        let mut tls_stream = match connect_https_upstream(&upstream_host, upstream_port, ignore_tls_err).await {
             Ok(s) => s,
-            Err(e) => {
-                eprintln!("[local-forwarder] HTTPS upstream TCP connection failed: {}", e);
-                let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
-                return;
-            }
-        };
-
-        let mut builder = native_tls::TlsConnector::builder();
-        if ignore_tls_err {
-            builder.danger_accept_invalid_certs(true);
-            builder.danger_accept_invalid_hostnames(true);
-        }
-        let connector = match builder.build() {
-            Ok(c) => tokio_native_tls::TlsConnector::from(c),
-            Err(e) => {
-                eprintln!("[local-forwarder] TLS builder failed: {}", e);
-                let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
-                return;
-            }
-        };
-
-        let mut tls_stream = match connector.connect(&upstream_host, upstream_tcp).await {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("[local-forwarder] TLS handshake with upstream failed: {}", e);
+            Err(_) => {
                 let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
                 return;
             }
@@ -753,34 +806,47 @@ fn forward_https_upstream(
             return;
         }
 
-        let _ = client.set_nonblocking(true);
-        let mut async_client = match tokio::net::TcpStream::from_std(client) {
+        let initial_len = client_leftover.len() as u64;
+        run_bidirectional_tls_relay(
+            client,
+            &target,
+            initial_len,
+            tls_stream,
+            true,
+            Some(&client_leftover),
+        )
+        .await;
+    });
+}
+
+/// Asynchronously forwards plain HTTP requests to upstream via TLS-encrypted HTTPS proxy
+fn forward_plain_http_https_upstream(
+    mut client: TcpStream,
+    initial_payload: Vec<u8>,
+    target: String,
+    upstream_host: String,
+    upstream_port: u16,
+    ignore_tls_err: bool,
+) {
+    tauri::async_runtime::spawn(async move {
+        let tls_stream = match connect_https_upstream(&upstream_host, upstream_port, ignore_tls_err).await {
             Ok(s) => s,
-            Err(e) => {
-                eprintln!("[local-forwarder] Async client conversion error: {}", e);
+            Err(_) => {
+                let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
                 return;
             }
         };
 
-        if let Err(_) = async_client.write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n").await {
-            return;
-        }
-
-        if !client_leftover.is_empty() {
-            if let Err(_) = tls_stream.write_all(&client_leftover).await {
-                return;
-            }
-        }
-
-        record_session(&target, true, client_leftover.len() as u64);
-        ACTIVE_CONNECTIONS.fetch_add(1, Ordering::Relaxed);
-        let res = tokio::io::copy_bidirectional(&mut async_client, &mut tls_stream).await;
-        ACTIVE_CONNECTIONS.fetch_sub(1, Ordering::Relaxed);
-        if let Ok((tx, rx)) = res {
-            TOTAL_TX_BYTES.fetch_add(tx, Ordering::Relaxed);
-            TOTAL_RX_BYTES.fetch_add(rx, Ordering::Relaxed);
-            update_session_bytes(&target, tx + rx);
-        }
+        let initial_len = initial_payload.len() as u64;
+        run_bidirectional_tls_relay(
+            client,
+            &target,
+            initial_len,
+            tls_stream,
+            false,
+            Some(&initial_payload),
+        )
+        .await;
     });
 }
 
@@ -995,6 +1061,41 @@ fn handle_forwarder_client(client: &mut TcpStream) -> std::io::Result<()> {
         ACTIVE_CONNECTIONS.fetch_sub(1, Ordering::Relaxed);
     } else {
         // Plain HTTP forwarding
+        if should_proxy && upstream_proto == UpstreamProtocol::Https {
+            if upstream_host.is_empty() {
+                let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
+                return Ok(());
+            }
+
+            let mut initial_payload = Vec::new();
+            initial_payload.extend_from_slice(request_line.as_bytes());
+            loop {
+                let mut line = String::new();
+                if reader.read_line(&mut line)? == 0 {
+                    break;
+                }
+                initial_payload.extend_from_slice(line.as_bytes());
+                if line == "\r\n" || line == "\n" {
+                    break;
+                }
+            }
+            let client_leftover = reader.buffer();
+            if !client_leftover.is_empty() {
+                initial_payload.extend_from_slice(client_leftover);
+            }
+
+            let client_clone = client.try_clone()?;
+            forward_plain_http_https_upstream(
+                client_clone,
+                initial_payload,
+                target.to_string(),
+                upstream_host,
+                upstream_port,
+                ignore_tls_err,
+            );
+            return Ok(());
+        }
+
         let mut target_stream = if should_proxy {
             let upstream_addrs = resolve_target_addresses(&format!("{}:{}", upstream_host, upstream_port));
             let mut upstream = None;
